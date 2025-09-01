@@ -1,0 +1,16 @@
+# Environment files (contain secrets)
+.env
+.env.local
+.env.prod
+**/.env
+**/.env.local
+
+# docker and data
+**/*.db
+**/__pycache__/
+**/.pytest_cache/
+n8n_data/
+
+# OS noise
+.DS_Store
+Thumbs.db
