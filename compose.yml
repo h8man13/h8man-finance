@@ -1,13 +1,13 @@
 services:
   fx:
     build:
-      context: ${ROOT}/services/fx
+      context: ./services/fx
     env_file:
-      - ${ROOT}/services/fx/.env
+      - ./services/fx/.env
     ports:
       - "8000:8000"
     volumes:
-      - ${ROOT}/services/fx/data:/data
+      - ./services/fx/data:/data
     healthcheck:
       test: ["CMD-SHELL", "python - <<'PY'\nimport urllib.request,sys\nurllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)\nsys.exit(0)\nPY"]
       interval: 20s
@@ -18,13 +18,13 @@ services:
 
   portfolio-logic:
     build:
-      context: ${ROOT}/services/portfolio
+      context: ./services/portfolio
     env_file:
-      - ${ROOT}/services/portfolio/.env
+      - ./services/portfolio/.env
     ports:
       - "8001:8000"
     volumes:
-      - ${ROOT}/services/portfolio/data:/data
+      - ./services/portfolio/data:/data
     depends_on:
       fx:
         condition: service_healthy
@@ -41,7 +41,7 @@ services:
     ports:
       - "127.0.0.1:8081:8080"
     volumes:
-      - ${ROOT}/services/portfolio/data:/data
+      - ./services/portfolio/data:/data
     command: ["sqlite_web", "-H", "0.0.0.0", "/data/cache.db"]
     depends_on:
       portfolio-logic:
