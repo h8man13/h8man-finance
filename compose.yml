@@ -79,3 +79,4 @@ volumes:
   n8n_data:
     external: true
     name: n8n_n8n_data
+    test: pass
