@@ -41,7 +41,7 @@ services:
     ports:
       - "127.0.0.1:8081:8080"
     volumes:
-      - ${ROOT}/services/portfolio/data:/data
+      - ./services/portfolio/data:/data
     command: ["sqlite_web", "-H", "0.0.0.0", "/data/cache.db"]
     depends_on:
       portfolio-logic:
