@@ -16,25 +16,25 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  portfolio-logic:
-    build:
-      context: ./services/portfolio
-    env_file:
-      - ./services/portfolio/.env
-    ports:
-      - "8001:8000"
-    volumes:
-      - ./services/portfolio/data:/data
-    depends_on:
-      fx:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS --max-time 3 http://127.0.0.1:8000/health || exit 1"]
-      interval: 20s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    restart: unless-stopped
+  # portfolio-logic:
+  #   build:
+  #     context: ./services/portfolio
+  #   env_file:
+  #     - ./services/portfolio/.env
+  #   ports:
+  #     - "8001:8000"
+  #   volumes:
+  #     - ./services/portfolio/data:/data
+  #   depends_on:
+  #     fx:
+  #       condition: service_healthy
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "curl -fsS --max-time 3 http://127.0.0.1:8000/health || exit 1"]
+  #     interval: 20s
+  #     timeout: 5s
+  #     retries: 5
+  #     start_period: 10s
+  #   restart: unless-stopped
 
   sqliteweb:
     image: coleifer/sqlite-web:latest
