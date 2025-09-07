@@ -74,8 +74,8 @@ services:
     depends_on:
       fx:
         condition: service_healthy
-      portfolio-logic:
-        condition: service_healthy
+      # portfolio-logic:
+      #   condition: service_healthy
 
 volumes:
   n8n_data:
