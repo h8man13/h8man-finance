@@ -1,0 +1,81 @@
+{
+  "registry_version": "2.0.0",
+  "schema_version": "1",
+  "defaults": { "enabled": true, "permissions": ["owner"] },
+  "commands": [
+    { "name": "/price", "aliases": ["/p"], "workflow_id": "wf_price",
+      "args_schema": [{ "name": "symbols", "type": "string", "required": true, "many": true, "max": 10 }],
+      "description": "Latest quotes in EUR plus % since open."
+    },
+
+    { "name": "/portfolio", "aliases": ["/po"], "workflow_id": "wf_portfolio", "args_schema": [] },
+    { "name": "/portfolio_snapshot", "aliases": ["/po_snapshot"], "workflow_id": "wf_po_snapshot",
+      "args_schema": [{ "name": "period", "type": "enum", "values": ["d","w","m","y"], "required": true }]
+    },
+    { "name": "/portfolio_summary", "aliases": ["/po_summary"], "workflow_id": "wf_po_summary",
+      "args_schema": [{ "name": "period", "type": "enum", "values": ["d","w","m","y"], "required": true }]
+    },
+    { "name": "/portfolio_breakdown", "aliases": ["/po_breakdown"], "workflow_id": "wf_po_breakdown",
+      "args_schema": [{ "name": "period", "type": "enum", "values": ["d","w","m","y"], "required": true }]
+    },
+    { "name": "/portfolio_digest", "aliases": ["/po_digest"], "workflow_id": "wf_po_digest",
+      "args_schema": [{ "name": "period", "type": "enum", "values": ["d","w","m","y"], "required": true }]
+    },
+    { "name": "/portfolio_movers", "aliases": ["/po_movers"], "workflow_id": "wf_po_movers",
+      "args_schema": [{ "name": "period", "type": "enum", "values": ["d","w","m","y"], "required": true }]
+    },
+    { "name": "/po_if", "aliases": [], "workflow_id": "wf_po_if",
+      "args_schema": [
+        { "name": "symbol_or_pick", "type": "string", "required": true },
+        { "name": "delta_pct", "type": "percent", "required": true }
+      ]
+    },
+
+    { "name": "/add", "aliases": [], "workflow_id": "wf_add",
+      "args_schema": [
+        { "name": "qty", "type": "number", "required": true },
+        { "name": "symbol", "type": "string", "required": true },
+        { "name": "type", "type": "enum", "values": ["stock","etf","crypto"], "required": false }
+      ]
+    },
+    { "name": "/remove", "aliases": [], "workflow_id": "wf_remove",
+      "args_schema": [{ "name": "symbol", "type": "string", "required": true }]
+    },
+    { "name": "/cash", "aliases": [], "workflow_id": "wf_cash", "args_schema": [] },
+    { "name": "/cash_add", "aliases": [], "workflow_id": "wf_cash_add",
+      "args_schema": [{ "name": "amount_eur", "type": "number", "required": true }]
+    },
+    { "name": "/buy", "aliases": [], "workflow_id": "wf_buy",
+      "args_schema": [
+        { "name": "qty", "type": "number", "required": true },
+        { "name": "symbol", "type": "string", "required": true },
+        { "name": "price_ccy", "type": "number", "required": true }
+      ]
+    },
+    { "name": "/sell", "aliases": [], "workflow_id": "wf_sell",
+      "args_schema": [
+        { "name": "qty", "type": "number", "required": true },
+        { "name": "symbol", "type": "string", "required": true },
+        { "name": "price_ccy", "type": "number", "required": true }
+      ]
+    },
+    { "name": "/tx", "aliases": [], "workflow_id": "wf_tx",
+      "args_schema": [{ "name": "n", "type": "integer", "required": false, "min": 1, "max": 50 }]
+    },
+    { "name": "/allocation", "aliases": [], "workflow_id": "wf_allocation", "args_schema": [] },
+    { "name": "/allocation_edit", "aliases": [], "workflow_id": "wf_allocation_edit",
+      "args_schema": [
+        { "name": "etf", "type": "integer", "required": false },
+        { "name": "stocks", "type": "integer", "required": false },
+        { "name": "crypto", "type": "integer", "required": false }
+      ]
+    },
+    { "name": "/rename", "aliases": [], "workflow_id": "wf_rename",
+      "args_schema": [
+        { "name": "symbol", "type": "string", "required": true },
+        { "name": "nickname", "type": "string", "required": true }
+      ]
+    },
+    { "name": "/help", "aliases": [], "workflow_id": "wf_help", "args_schema": [] }
+  ]
+}

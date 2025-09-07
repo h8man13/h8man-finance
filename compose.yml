@@ -69,6 +69,8 @@ services:
       - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
     volumes:
       - n8n_data:/home/node/.n8n
+    # mount your command registry read-only
+      - /opt/stack/config:/config:ro
     depends_on:
       fx:
         condition: service_healthy
