@@ -17,8 +17,7 @@ services:
       retries: 5
       start_period: 10s
     restart: unless-stopped
-
-    market_data:
+  market_data:
     build: ./services/market_data
     image: market_data:latest
     env_file:
@@ -39,7 +38,6 @@ services:
       retries: 10
       start_period: 30s
     restart: unless-stopped
-
 
   # Optional: SQLite web viewer for the FX cache DB
   sqliteweb_fx:
