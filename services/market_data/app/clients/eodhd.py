@@ -1,198 +1,80 @@
-"""
-EODHD client used by the quotes service.
-
-Goals:
-- Accept symbols like BTC-USD at the API layer; only at the upstream edge
-  map to BTC-USD.CC (no hardcoded tickers).
-- Parse numbers safely so "N/D" etc. don't crash the request.
-- Keep the public contract stable for services/quotes.py (EodhdClient class).
-"""
-
 from __future__ import annotations
 
-import asyncio
-from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation
-from typing import Any, Dict, Iterable, Optional
-
 import httpx
+from typing import List, Dict, Any
+from decimal import Decimal, InvalidOperation
 
-from app.settings import settings
-from app.utils.symbols import eodhd_code_from_symbol
+from ..settings import settings
 
-EODHD_RT_URL = "https://eodhd.com/api/real-time/{code}"
+# Use shared symbol mapper if present; otherwise a generic, future-proof rule.
+try:
+    from ..utils.symbols import eodhd_code_from_symbol as _code_map  # optional
+except Exception:  # pragma: no cover
+    def _code_map(sym: str) -> str:
+        s = sym.strip().upper()
+        # EODHD expects .CC for crypto pairs like BTC-USD
+        if "-" in s and not s.endswith(".CC"):
+            return f"{s}.CC"
+        return s
 
-
-def _to_decimal(x) -> Optional[Decimal]:
-    """Safe Decimal parsing: None/""/"N/D"/non-numeric -> None."""
-    if x is None:
-        return None
+def _is_numeric(val) -> bool:
     try:
-        return Decimal(str(x))
+        Decimal(str(val))
+        return True
     except (InvalidOperation, ValueError, TypeError):
-        return None
+        return False
 
-
-def _pick_price(payload: Dict[str, Any]) -> Optional[Decimal]:
-    """Prefer close, then price, then last; tolerate missing/non-numeric."""
-    for key in ("close", "price", "last"):
-        d = _to_decimal(payload.get(key))
-        if d is not None:
-            return d
-    return None
-
-
-def _as_of(payload: Dict[str, Any]) -> str:
-    """ISO8601 UTC from lastTradeTime/timestamp; fallback to now."""
-    ts = payload.get("lastTradeTime") or payload.get("timestamp")
-    try:
-        if isinstance(ts, (int, float)):
-            return datetime.fromtimestamp(int(ts), tz=timezone.utc).isoformat()
-        if isinstance(ts, str) and ts:
-            return datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(timezone.utc).isoformat()
-    except Exception:
-        pass
-    return datetime.now(tz=timezone.utc).isoformat()
-
+def _sanitize_item(d: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Make upstream payload safer for downstream Decimal() casts:
+    - If 'close' is non-numeric but 'price' or 'last' is numeric,
+      copy that numeric value into 'close'. This is generic and
+      avoids per-ticker hacks.
+    """
+    if not _is_numeric(d.get("close")):
+        for k in ("price", "last"):
+            if _is_numeric(d.get(k)):
+                d["close"] = str(d[k])
+                break
+    return d
 
 class EodhdClient:
-    """
-    Minimal async client. Use like:
-
-        client = EodhdClient()
-        data = await client.get_realtime("AMZN.US")
-        batch = await client.get_realtime_batch(["AMZN.US","BTC-USD"])
-
-    If you pass your own httpx.AsyncClient, this class won't close it.
-    """
-
     def __init__(
         self,
-        api_key: Optional[str] = None,
-        client: Optional[httpx.AsyncClient] = None,
-        timeout: float = 8.0,
-    ) -> None:
-        self.api_key = api_key or settings.EODHD_API_TOKEN
-        self._own_client = client is None
-        self.client = client or httpx.AsyncClient(timeout=timeout)
+        base_url: str = settings.EODHD_BASE_URL,
+        token: str = settings.EODHD_API_TOKEN,
+        timeout: float = 15.0,
+    ):
+        self.base_url = base_url.rstrip("/")
+        self.token = token
         self.timeout = timeout
 
-    async def aclose(self) -> None:
-        if self._own_client:
-            await self.client.aclose()
-
-    async def __aenter__(self) -> "EodhdClient":
-        return self
-
-    async def __aexit__(self, exc_type, exc, tb) -> None:
-        await self.aclose()
-
-    async def get_realtime(self, symbol: str) -> Dict[str, Any]:
+    async def batch_quotes(self, symbols: List[str]) -> List[Dict[str, Any]]:
         """
-        Fetch a single symbol from EODHD.
-        Returns dict with either 'ok': True and 'data' or an 'error' block.
+        Fetch real-time quotes for multiple symbols in one call.
+        Returns the upstream JSON (list of dicts), with a light sanitation
+        to avoid Decimal('N/D') crashes downstream.
         """
-        code = eodhd_code_from_symbol(symbol)
-        url = EODHD_RT_URL.format(code=code)
-        try:
-            r = await self.client.get(
-                url,
-                params={"api_token": self.api_key, "fmt": "json"},
-                timeout=self.timeout,
-            )
-        except httpx.TimeoutException:
-            return {
-                "ok": False,
-                "error": {
-                    "code": "TIMEOUT",
-                    "message": "timeout",
-                    "source": "eodhd",
-                    "retriable": True,
-                    "details": {"symbol": symbol},
-                },
-            }
-        except Exception as e:
-            return {
-                "ok": False,
-                "error": {
-                    "code": "UPSTREAM_ERROR",
-                    "message": str(e),
-                    "source": "eodhd",
-                    "retriable": True,
-                    "details": {"symbol": symbol},
-                },
-            }
+        codes = ",".join(_code_map(s) for s in symbols)
+        url = f"{self.base_url}/real-time/{codes}"
+        params = {"api_token": self.token, "fmt": "json"}
 
-        if r.status_code >= 500:
-            return {
-                "ok": False,
-                "error": {
-                    "code": "UPSTREAM_ERROR",
-                    "message": f"HTTP {r.status_code}",
-                    "source": "eodhd",
-                    "retriable": True,
-                    "details": {"symbol": symbol},
-                },
-            }
-        if r.status_code == 404:
-            return {
-                "ok": False,
-                "error": {
-                    "code": "NOT_FOUND",
-                    "message": "symbol not found",
-                    "source": "eodhd",
-                    "retriable": False,
-                    "details": {"symbol": symbol},
-                },
-            }
-
-        try:
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            r = await client.get(url, params=params)
+            r.raise_for_status()
             data = r.json()
-            if isinstance(data, list) and data:
-                data = data[0]
-        except Exception:
-            return {
-                "ok": False,
-                "error": {
-                    "code": "UPSTREAM_ERROR",
-                    "message": "invalid json",
-                    "source": "eodhd",
-                    "retriable": True,
-                    "details": {"symbol": symbol},
-                },
-            }
+            items = data if isinstance(data, list) else [data]
+            return [_sanitize_item(dict(item)) for item in items]
 
-        price = _pick_price(data)
-        if price is None or price <= 0:
-            return {
-                "ok": False,
-                "error": {
-                    "code": "UPSTREAM_BAD_DATA",
-                    "message": "no valid price",
-                    "source": "eodhd",
-                    "retriable": True,
-                    "details": {
-                        "symbol": symbol,
-                        "raw": {"close": data.get("close"), "price": data.get("price"), "last": data.get("last")},
-                    },
-                },
-            }
+    async def historical(self, symbol: str, period: str) -> List[Dict[str, Any]]:
+        """
+        Daily EOD data; 'period' is accepted for interface compatibility.
+        """
+        code = _code_map(symbol)
+        url = f"{self.base_url}/eod/{code}"
+        params = {"api_token": self.token, "fmt": "json", "order": "d"}
 
-        return {
-            "ok": True,
-            "data": {
-                "price": price,        # native currency
-                "as_of": _as_of(data), # ISO8601 UTC
-                "raw": {"code": code}, # minimal echo
-            },
-        }
-
-    async def get_realtime_batch(self, symbols: Iterable[str]) -> Dict[str, Dict[str, Any]]:
-        """Concurrent single calls; returns dict keyed by original symbol."""
-        syms = list(symbols)
-
-        async def one(s: str):
-            return s, await self.get_realtime(s)
-
-        pairs = await asyncio.gather(*(one(s) for s in syms), return_exceptions=False)
-        return {k: v for k, v in pairs}
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            r = await client.get(url, params=params)
+            r.raise_for_status()
+            return r.json()
