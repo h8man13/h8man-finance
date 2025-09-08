@@ -1,4 +1,10 @@
-from pydantic import BaseSettings, AnyHttpUrl, validator
+try:
+    # Pydantic v2
+    from pydantic_settings import BaseSettings
+    from pydantic import AnyHttpUrl, field_validator as validator
+except Exception:
+    # Pydantic v1 fallback
+    from pydantic import BaseSettings, AnyHttpUrl, validator
 from typing import List, Optional
 from decimal import Decimal
 
