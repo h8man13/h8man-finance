@@ -1,4 +1,4 @@
-version: "3.9"
+#version: "3.9"
 
 services:
   n8n:
@@ -33,4 +33,4 @@ services:
 volumes:
   n8n_data:
     external: true
-    name: ${N8N_DATA_VOLUME:-n8n_n8n_data}
+    name: ${N8N_DATA_VOLUME:-n8n_data}
