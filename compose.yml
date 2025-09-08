@@ -1,4 +1,4 @@
-# version: "3.9"
+#version: "3.9"
 
 services:
   fx:
@@ -7,7 +7,7 @@ services:
     env_file:
       - ./services/fx/.env
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./services/fx/data:/data
     healthcheck:
@@ -17,6 +17,7 @@ services:
       retries: 5
       start_period: 10s
     restart: unless-stopped
+
   market_data:
     build: ./services/market_data
     image: market_data:latest
@@ -39,7 +40,6 @@ services:
       start_period: 30s
     restart: unless-stopped
 
-  # Optional: SQLite web viewer for the FX cache DB
   sqliteweb_fx:
     image: coleifer/sqlite-web:latest
     ports:
@@ -52,7 +52,6 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # Optional: SQLite web viewer for market_data cache DB (shares the named volume)
   sqliteweb_market_data:
     image: coleifer/sqlite-web:latest
     ports:
@@ -65,43 +64,13 @@ services:
         condition: service_started
     restart: unless-stopped
 
-  n8n:
-    image: n8nio/n8n:latest
-    container_name: n8n
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:5678:5678"
-    environment:
-      - N8N_BASIC_AUTH_ACTIVE=true
-      - N8N_BASIC_AUTH_USER=admin
-      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD}
-      - TZ=Europe/Berlin
-      - GENERIC_TIMEZONE=Europe/Berlin
-      - N8N_HOST=${N8N_HOST}
-      - N8N_PROTOCOL=https
-      - WEBHOOK_URL=${WEBHOOK_URL}
-      - N8N_EDITOR_BASE_URL=${N8N_EDITOR_BASE_URL}
-      - N8N_TRUSTED_PROXIES=loopback
-      - N8N_RUNNERS_ENABLED=true
-      - DB_SQLITE_POOL_SIZE=5
-      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
-    volumes:
-      - n8n_data:/home/node/.n8n
-      # mount your command registry read-only
-      - /opt/stack/config:/config:ro
-    depends_on:
-      fx:
-        condition: service_healthy
-      portfolio-logic:
-        condition: service_started
-
   portfolio-logic:
     build:
       context: ./services/portfolio
     env_file:
       - ./services/portfolio/.env
     ports:
-      - "8004:8000"
+      - "127.0.0.1:8004:8000"
     volumes:
       - ./services/portfolio/data:/data
     depends_on:
@@ -117,6 +86,3 @@ services:
 
 volumes:
   market_data_data:
-  n8n_data:
-    external: true
-    name: n8n_n8n_data
