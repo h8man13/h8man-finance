@@ -1,55 +1,73 @@
 """
-Settings with Pydantic v1/v2 compatibility (no validators).
+Settings with Pydantic v2/v1 compatibility and no decorators.
 
-- Works on pydantic v2 (via pydantic-settings) and v1 fallback.
-- Ignores unknown env keys.
-- Adds FX_BASE_URL and TZ defaults; both can be overridden via env.
-- Keeps your TTL and service defaults.
+- v2: uses pydantic-settings with model_config
+- v1: falls back to pydantic.BaseSettings with inner Config
+- Only defines fields referenced by the project files
+- All defaults are overrideable via environment or .env
 """
 
 from typing import Optional, List
 
-# Prefer Pydantic v2; fallback to v1 for older envs
+# Prefer Pydantic v2; fallback to v1
 try:
-    from pydantic_settings import BaseSettings  # v2
+    from pydantic_settings import BaseSettings, SettingsConfigDict  # v2
     V2 = True
 except Exception:  # pragma: no cover
     from pydantic import BaseSettings  # v1
+    SettingsConfigDict = None  # type: ignore
     V2 = False
 
 
 class Settings(BaseSettings):
-    # Upstream
-    EODHD_API_TOKEN: str
+    # App identity & logging
+    APP_NAME: str = "market_data"
+    ENV: str = "prod"
+    LOG_LEVEL: str = "info"
 
-    # Expected by clients/fx.py; default fits docker-compose networking (service: fx)
+    # Networking (FastAPI/uvicorn)
+    HOST: str = "0.0.0.0"
+    PORT: int = 8000
+
+    # Upstream data provider (EODHD)
+    # NOTE: API token must be provided in env or .env
+    EODHD_API_TOKEN: str
+    # Safe default; override with EODHD_BASE_URL in env if needed
+    EODHD_BASE_URL: str = "https://eodhd.com/api"
+
+    # FX microservice (docker-compose service name `fx` by default)
+    # Override with FX_BASE_URL=http://127.0.0.1:8000 when calling locally from host
     FX_BASE_URL: str = "http://fx:8000"
 
-    # --- NEW: expected by services/benchmarks.py ---
-    # Override with env TZ=Europe/Berlin (or any IANA TZ) if you want
-    TZ: str = "Europe/Berlin"
+    # Cache/database
+    DB_PATH: str = "/app/data/cache.db"
 
     # TTLs (seconds)
     QUOTES_TTL_SEC: int = 90
     BENCH_TTL_SEC: int = 900
     META_TTL_SEC: int = 86400
 
-    # Service
-    PORT: int = 8000
-    LOG_LEVEL: str = "INFO"
+    # Timezone
+    TZ: str = "Europe/Berlin"
 
-    # Optional CORS (CSV list, e.g. "https://app.example.com,https://foo.bar")
+    # CORS (CSV list, e.g. "https://app.example.com,https://foo.bar")
     CORS_ALLOW_ORIGINS: Optional[str] = None
     CORS_ALLOW_CREDENTIALS: bool = False
 
-    # Extra settings: ignore unknown env keys
+    # Config / model_config
     if V2:
-        model_config = {"extra": "ignore"}  # pydantic v2
+        model_config = SettingsConfigDict(
+            env_file=".env",
+            case_sensitive=True,
+            extra="ignore",
+        )
     else:
-        class Config:  # pydantic v1
+        class Config:  # type: ignore
+            env_file = ".env"
+            case_sensitive = True
             extra = "ignore"
 
-    # Helper for code that needs a list
+    # Helper to consume CORS origins as a list in app/main.py
     def cors_origin_list(self) -> Optional[List[str]]:
         if not self.CORS_ALLOW_ORIGINS:
             return None
