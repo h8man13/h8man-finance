@@ -1,48 +1,51 @@
+"""
+Settings with Pydantic v1/v2 compatibility.
+
+- Uses pydantic-settings on v2.
+- Ignores unknown env keys.
+- Keeps your defaults from the spec.
+"""
+
+from typing import Optional
+
+# Prefer Pydantic v2; fallback to v1 for older envs
 try:
-    # Pydantic v2
-    from pydantic_settings import BaseSettings
-    from pydantic import AnyHttpUrl, field_validator as validator
-except Exception:
-    # Pydantic v1 fallback
-    from pydantic import BaseSettings, AnyHttpUrl, validator
-from typing import List, Optional
-from decimal import Decimal
+    from pydantic_settings import BaseSettings  # v2
+    from pydantic import field_validator as validator  # v2 alias
+    V2 = True
+except Exception:  # pragma: no cover
+    from pydantic import BaseSettings, validator  # v1
+    V2 = False
+
 
 class Settings(BaseSettings):
-    APP_NAME: str = "market_data"
-    ENV: str = "prod"
-    LOG_LEVEL: str = "info"
-
-    # Networking
-    HOST: str = "0.0.0.0"
-    PORT: int = 8000
-    CORS_ALLOW_ORIGINS: List[AnyHttpUrl] = []
-
-    # Upstream services
-    EODHD_BASE_URL: str = "https://eodhd.com/api"
+    # Upstream
     EODHD_API_TOKEN: str
-    FX_BASE_URL: str = "http://fx:8000"
 
-    # Cache and DB
-    DB_PATH: str = "/app/data/cache.db"
+    # TTLs (seconds)
     QUOTES_TTL_SEC: int = 90
     BENCH_TTL_SEC: int = 900
     META_TTL_SEC: int = 86400
 
-    # Auth
-    TELEGRAM_BOT_TOKEN: Optional[str] = None
+    # Service
+    PORT: int = 8000
+    LOG_LEVEL: str = "INFO"
 
-    # Timezone
-    TZ: str = "Europe/Berlin"
+    # Optional CORS
+    CORS_ALLOW_ORIGINS: Optional[str] = None  # CSV list
+    CORS_ALLOW_CREDENTIALS: bool = False
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    if V2:
+        model_config = {"extra": "ignore"}  # v2
+    else:
+        class Config:  # v1
+            extra = "ignore"
 
-    @validator("QUOTES_TTL_SEC", "BENCH_TTL_SEC", "META_TTL_SEC")
-    def ttl_positive(cls, v: int) -> int:
-        if v <= 0:
-            raise ValueError("TTL must be positive")
-        return v
+    @validator("CORS_ALLOW_ORIGINS", pre=True)
+    def _normalize_cors(cls, v):
+        if not v:
+            return None
+        return ",".join(s.strip() for s in str(v).split(",") if s.strip())
 
-settings = Settings()  # type: ignore
+
+settings = Settings()
