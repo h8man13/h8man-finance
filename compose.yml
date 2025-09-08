@@ -1,4 +1,4 @@
-#version: "3.9"
+name: stack
 
 services:
   fx:
@@ -7,7 +7,7 @@ services:
     env_file:
       - ./services/fx/.env
     ports:
-      - "127.0.0.1:8000:8000"
+      - "8000:8000"
     volumes:
       - ./services/fx/data:/data
     healthcheck:
@@ -24,11 +24,9 @@ services:
     env_file:
       - ./services/market_data/.env
     ports:
-      - "127.0.0.1:8001:8000"
+      - "8001:8000"
     volumes:
       - market_data_data:/app/data
-    working_dir: /app
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     depends_on:
       fx:
         condition: service_healthy
@@ -36,10 +34,31 @@ services:
       test: ["CMD-SHELL", "curl -fsS --max-time 3 http://127.0.0.1:8000/health || exit 1"]
       interval: 20s
       timeout: 5s
-      retries: 10
-      start_period: 30s
+      retries: 5
+      start_period: 10s
     restart: unless-stopped
 
+  portfolio-logic:
+    build:
+      context: ./services/portfolio
+    env_file:
+      - ./services/portfolio/.env
+    ports:
+      - "8004:8000"
+    volumes:
+      - ./services/portfolio/data:/data
+    depends_on:
+      fx:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS --max-time 3 http://127.0.0.1:8000/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # Optional SQLite web viewer for the FX cache DB (localhost only)
   sqliteweb_fx:
     image: coleifer/sqlite-web:latest
     ports:
@@ -52,6 +71,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Optional SQLite web viewer for market_data cache (named volume)
   sqliteweb_market_data:
     image: coleifer/sqlite-web:latest
     ports:
@@ -62,26 +82,6 @@ services:
     depends_on:
       market_data:
         condition: service_started
-    restart: unless-stopped
-
-  portfolio-logic:
-    build:
-      context: ./services/portfolio
-    env_file:
-      - ./services/portfolio/.env
-    ports:
-      - "127.0.0.1:8004:8000"
-    volumes:
-      - ./services/portfolio/data:/data
-    depends_on:
-      fx:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS --max-time 3 http://127.0.0.1:8000/health || exit 1"]
-      interval: 20s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
     restart: unless-stopped
 
 volumes:
