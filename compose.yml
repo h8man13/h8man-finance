@@ -1,3 +1,5 @@
+version: "3.9"
+
 services:
   fx:
     build:
@@ -16,36 +18,49 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  # portfolio-logic:
-  #   build:
-  #     context: ./services/portfolio
-  #   env_file:
-  #     - ./services/portfolio/.env
-  #   ports:
-  #     - "8001:8000"
-  #   volumes:
-  #     - ./services/portfolio/data:/data
-  #   depends_on:
-  #     fx:
-  #       condition: service_healthy
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "curl -fsS --max-time 3 http://127.0.0.1:8000/health || exit 1"]
-  #     interval: 20s
-  #     timeout: 5s
-  #     retries: 5
-  #     start_period: 10s
-  #   restart: unless-stopped
+  market_data:
+    build: ./services/market_data
+    image: market_data:latest
+    env_file:
+      - ./services/market_data/.env
+    volumes:
+      - market_data_data:/app/data
+    depends_on:
+      fx:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS --max-time 3 http://127.0.0.1:8000/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
 
-  sqliteweb:
+  # Optional: SQLite web viewer for the FX cache DB
+  sqliteweb_fx:
     image: coleifer/sqlite-web:latest
     ports:
       - "127.0.0.1:8081:8080"
     volumes:
-      - ./services/portfolio/data:/data
+      - ./services/fx/data:/data:ro
     command: ["sqlite_web", "-H", "0.0.0.0", "/data/cache.db"]
     depends_on:
-      portfolio-logic:
+      fx:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Optional: SQLite web viewer for market_data cache DB (shares the named volume)
+  sqliteweb_market_data:
+    image: coleifer/sqlite-web:latest
+    ports:
+      - "127.0.0.1:8082:8080"
+    volumes:
+      - market_data_data:/md:ro
+    command: ["sqlite_web", "-H", "0.0.0.0", "/md/cache.db"]
+    depends_on:
+      market_data:
         condition: service_started
+    restart: unless-stopped
 
   n8n:
     image: n8nio/n8n:latest
@@ -69,15 +84,36 @@ services:
       - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
     volumes:
       - n8n_data:/home/node/.n8n
-    # mount your command registry read-only
+      # mount your command registry read-only
       - /opt/stack/config:/config:ro
     depends_on:
       fx:
         condition: service_healthy
-      # portfolio-logic:
-      #   condition: service_healthy
+      portfolio-logic:
+        condition: service_started
+
+  portfolio-logic:
+    build:
+      context: ./services/portfolio
+    env_file:
+      - ./services/portfolio/.env
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./services/portfolio/data:/data
+    depends_on:
+      fx:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS --max-time 3 http://127.0.0.1:8000/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
 
 volumes:
+  market_data_data:
   n8n_data:
     external: true
     name: n8n_n8n_data
