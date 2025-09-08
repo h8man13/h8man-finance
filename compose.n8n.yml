@@ -1,9 +1,10 @@
-#version: "3.9"
+# n8n lives in a separate file so local runs (compose.yml) won’t start it.
+# Include this file on the server:  docker compose -f compose.yml -f compose.n8n.yml up -d
 
 services:
   n8n:
-    image: n8nio/n8n:1.79.1
-    container_name: n8n
+    image: n8nio/n8n:latest
+    # DO NOT set container_name — avoids global name conflicts
     restart: unless-stopped
     ports:
       - "127.0.0.1:5678:5678"
@@ -11,18 +12,19 @@ services:
       - N8N_BASIC_AUTH_ACTIVE=true
       - N8N_BASIC_AUTH_USER=admin
       - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD}
-      - TZ=${TZ}
-      - GENERIC_TIMEZONE=${TZ}
+      - TZ=${TZ:-Europe/Berlin}
+      - GENERIC_TIMEZONE=${TZ:-Europe/Berlin}
       - N8N_HOST=${N8N_HOST}
-      - N8N_PROTOCOL=${N8N_PROTOCOL}
+      - N8N_PROTOCOL=${N8N_PROTOCOL:-https}
       - WEBHOOK_URL=${WEBHOOK_URL}
       - N8N_EDITOR_BASE_URL=${N8N_EDITOR_BASE_URL}
-      - N8N_TRUSTED_PROXIES=${N8N_TRUSTED_PROXIES}
-      - N8N_RUNNERS_ENABLED=${N8N_RUNNERS_ENABLED}
+      - N8N_TRUSTED_PROXIES=${N8N_TRUSTED_PROXIES:-loopback}
+      - N8N_RUNNERS_ENABLED=${N8N_RUNNERS_ENABLED:-true}
       - DB_SQLITE_POOL_SIZE=5
       - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
     volumes:
       - n8n_data:/home/node/.n8n
+      # Optional: read-only command registry/config
       - /opt/stack/config:/config:ro
     depends_on:
       fx:
@@ -31,6 +33,7 @@ services:
         condition: service_started
 
 volumes:
+  # External volume for n8n’s persistent data; env-driven name with a sane default
   n8n_data:
     external: true
-    name: ${N8N_DATA_VOLUME:-n8n_data}
+    name: ${N8N_DATA_VOLUME:-stack_n8n_data}
