@@ -18,15 +18,17 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  market_data:
+    market_data:
     build: ./services/market_data
     image: market_data:latest
     env_file:
       - ./services/market_data/.env
     ports:
-      - "8001:8000"  
+      - "127.0.0.1:8001:8000"
     volumes:
       - market_data_data:/app/data
+    working_dir: /app
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     depends_on:
       fx:
         condition: service_healthy
@@ -34,9 +36,10 @@ services:
       test: ["CMD-SHELL", "curl -fsS --max-time 3 http://127.0.0.1:8000/health || exit 1"]
       interval: 20s
       timeout: 5s
-      retries: 5
-      start_period: 10s
+      retries: 10
+      start_period: 30s
     restart: unless-stopped
+
 
   # Optional: SQLite web viewer for the FX cache DB
   sqliteweb_fx:
