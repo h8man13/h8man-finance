@@ -3,7 +3,7 @@ Settings with Pydantic v1/v2 compatibility.
 
 - Uses pydantic-settings on v2.
 - Ignores unknown env keys.
-- Keeps your defaults from the spec.
+- Keeps your defaults (QUOTES/BENCH/META TTLs, PORT, LOG_LEVEL).
 """
 
 from typing import Optional
@@ -11,7 +11,7 @@ from typing import Optional
 # Prefer Pydantic v2; fallback to v1 for older envs
 try:
     from pydantic_settings import BaseSettings  # v2
-    from pydantic import field_validator as validator  # v2 alias
+    from pydantic import field_validator        # v2
     V2 = True
 except Exception:  # pragma: no cover
     from pydantic import BaseSettings, validator  # v1
@@ -31,21 +31,28 @@ class Settings(BaseSettings):
     PORT: int = 8000
     LOG_LEVEL: str = "INFO"
 
-    # Optional CORS
-    CORS_ALLOW_ORIGINS: Optional[str] = None  # CSV list
+    # Optional CORS (CSV list, e.g. "https://app.example.com,https://foo.bar")
+    CORS_ALLOW_ORIGINS: Optional[str] = None
     CORS_ALLOW_CREDENTIALS: bool = False
 
+    # Extra settings: ignore unknown env keys
     if V2:
-        model_config = {"extra": "ignore"}  # v2
+        model_config = {"extra": "ignore"}  # pydantic v2
+
+        @field_validator("CORS_ALLOW_ORIGINS", mode="before")
+        def _normalize_cors(cls, v):
+            if not v:
+                return None
+            return ",".join(s.strip() for s in str(v).split(",") if s.strip())
     else:
-        class Config:  # v1
+        class Config:  # pydantic v1
             extra = "ignore"
 
-    @validator("CORS_ALLOW_ORIGINS", pre=True)
-    def _normalize_cors(cls, v):
-        if not v:
-            return None
-        return ",".join(s.strip() for s in str(v).split(",") if s.strip())
+        @validator("CORS_ALLOW_ORIGINS", pre=True)
+        def _normalize_cors(cls, v):
+            if not v:
+                return None
+            return ",".join(s.strip() for s in str(v).split(",") if s.strip())
 
 
 settings = Settings()
