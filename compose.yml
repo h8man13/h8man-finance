@@ -23,6 +23,8 @@ services:
     image: market_data:latest
     env_file:
       - ./services/market_data/.env
+    ports:
+      - "8001:8000"  
     volumes:
       - market_data_data:/app/data
     depends_on:
@@ -40,7 +42,7 @@ services:
   sqliteweb_fx:
     image: coleifer/sqlite-web:latest
     ports:
-      - "127.0.0.1:8084:8080"
+      - "127.0.0.1:8082:8080"
     volumes:
       - ./services/fx/data:/data:ro
     command: ["sqlite_web", "-H", "0.0.0.0", "/data/cache.db"]
@@ -53,7 +55,7 @@ services:
   sqliteweb_market_data:
     image: coleifer/sqlite-web:latest
     ports:
-      - "127.0.0.1:8085:8080"
+      - "127.0.0.1:8083:8080"
     volumes:
       - market_data_data:/md:ro
     command: ["sqlite_web", "-H", "0.0.0.0", "/md/cache.db"]
@@ -98,7 +100,7 @@ services:
     env_file:
       - ./services/portfolio/.env
     ports:
-      - "8001:8000"
+      - "8004:8000"
     volumes:
       - ./services/portfolio/data:/data
     depends_on:
