@@ -3,7 +3,7 @@ Settings with Pydantic v1/v2 compatibility (no validators).
 
 - Works on pydantic v2 (via pydantic-settings) and v1 fallback.
 - Ignores unknown env keys.
-- Adds FX_BASE_URL with a safe default for Docker Compose networking.
+- Adds FX_BASE_URL and TZ defaults; both can be overridden via env.
 - Keeps your TTL and service defaults.
 """
 
@@ -22,10 +22,12 @@ class Settings(BaseSettings):
     # Upstream
     EODHD_API_TOKEN: str
 
-    # ---- New: FX base URL expected by app/clients/fx.py ----
-    # Default works inside docker-compose (service name "fx" on port 8000).
-    # You can override via env: FX_BASE_URL=http://127.0.0.1:8000
+    # Expected by clients/fx.py; default fits docker-compose networking (service: fx)
     FX_BASE_URL: str = "http://fx:8000"
+
+    # --- NEW: expected by services/benchmarks.py ---
+    # Override with env TZ=Europe/Berlin (or any IANA TZ) if you want
+    TZ: str = "Europe/Berlin"
 
     # TTLs (seconds)
     QUOTES_TTL_SEC: int = 90
