@@ -4,6 +4,7 @@ services:
   fx:
     build:
       context: ./services/fx
+    image: fx:latest
     env_file:
       - ./services/fx/.env
     ports:
@@ -31,34 +32,31 @@ services:
       fx:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS --max-time 3 http://127.0.0.1:8000/health || exit 1"]
+      test: ["CMD-SHELL", "python - <<'PY'\nimport urllib.request,sys\nurllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)\nsys.exit(0)\nPY"]
       interval: 20s
       timeout: 5s
       retries: 5
       start_period: 10s
     restart: unless-stopped
 
-  portfolio-logic:
+  telegram_router:
     build:
-      context: ./services/portfolio
+      context: ./services/telegram_router
     env_file:
-      - ./services/portfolio/.env
-    ports:
-      - "8004:8000"
+      - ./services/telegram_router/.env
     volumes:
-      - ./services/portfolio/data:/data
-    depends_on:
-      fx:
-        condition: service_healthy
+      - ./services/telegram_router/data:/app/data
+      - ./services/telegram_router/config:/config:ro
+    ports:
+      - "8010:8010"
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS --max-time 3 http://127.0.0.1:8000/health || exit 1"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8010/health"]
       interval: 20s
       timeout: 5s
       retries: 5
       start_period: 10s
-    restart: unless-stopped
 
-  # Optional SQLite web viewer for the FX cache DB (localhost only)
   sqliteweb_fx:
     image: coleifer/sqlite-web:latest
     ports:
@@ -71,14 +69,13 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # Optional SQLite web viewer for market_data cache (named volume)
   sqliteweb_market_data:
     image: coleifer/sqlite-web:latest
     ports:
       - "127.0.0.1:8082:8080"
     volumes:
-      - market_data_data:/md:ro
-    command: ["sqlite_web", "-H", "0.0.0.0", "/md/cache.db"]
+      - market_data_data:/md
+    command: ["sh","-c","test -f /md/cache.db && sqlite_web -H 0.0.0.0 /md/cache.db || sqlite_web -H 0.0.0.0 /md"]
     depends_on:
       market_data:
         condition: service_started

@@ -1,0 +1,73 @@
+generic:
+  error_prefix: "❗"
+  done: "✅ Done"
+  canceled: "Canceled."
+  missing_template: "Use: {usage}\nMissing: {missing}"
+  invalid_template: "{error}\nTry /help"
+  header_help: "*Commands*"
+  not_authorized: "Sorry, you’re not allowed yet."
+  unknown_input: "Didn’t catch that. Try /help"
+
+"/buy":
+  prompt_usage: "Use: [qty] [symbol] [price_ccy]"
+  success: "buy: *{symbol}* ×{qty} @ {price_ccy}"
+
+"/sell":
+  prompt_usage: "Use: [qty] [symbol] [price_ccy]"
+  success: "sell: *{symbol}* ×{qty} @ {price_ccy}"
+
+"/price":
+  prompt_usage: "Use: [symbols...]"
+  success: "{text}"
+
+"/fx":
+  prompt_usage: "Use: [base] [quote]"
+  success: "{base}/{quote}: {rate}"
+
+"/portfolio":
+  prompt_usage: "Use: /portfolio"
+  empty: "No portfolio yet. Start with /add or /cash_add."
+  header: "*Portfolio*"
+
+"/add":
+  prompt_usage: "Use: [qty] [symbol] [type]"
+
+"/remove":
+  prompt_usage: "Use: [symbol]"
+
+"/cash":
+  prompt_usage: "Use: /cash"
+
+"/cash_add":
+  prompt_usage: "Use: [amount]"
+
+"/tx":
+  prompt_usage: "Use: [n]"
+  header: "*Transactions*"
+
+"/portfolio_snapshot":
+  prompt_usage: "Use: [period=d|w|m|y]"
+
+"/portfolio_summary":
+  prompt_usage: "Use: [period=d|w|m|y]"
+
+"/portfolio_breakdown":
+  prompt_usage: "Use: [period=d|w|m|y]"
+
+"/portfolio_digest":
+  prompt_usage: "Use: [period=d|w|m|y]"
+
+"/portfolio_movers":
+  prompt_usage: "Use: [period=d|w|m|y]"
+
+"/allocation":
+  prompt_usage: "Use: /allocation"
+
+"/allocation_edit":
+  prompt_usage: "Use: [etf,stocks,crypto]"
+
+"/po_if":
+  prompt_usage: "Use: [scope] [+x%|-x%]"
+
+"/rename":
+  prompt_usage: "Use: [symbol] [nickname]"

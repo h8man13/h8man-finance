@@ -14,6 +14,9 @@ class OkEnvelope(BaseModel):
     ok: Literal[True] = True
     data: Dict[str, Any]
     ts: datetime
+    # New optional fields for partial success
+    partial: Optional[bool] = None
+    error: Optional[ErrorBody] = None
 
 class ErrEnvelope(BaseModel):
     ok: Literal[False] = False

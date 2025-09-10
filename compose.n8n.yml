@@ -29,8 +29,8 @@ services:
     depends_on:
       fx:
         condition: service_healthy
-      portfolio-logic:
-        condition: service_started
+      # portfolio-logic:
+      #   condition: service_started
 
 volumes:
   # External volume for n8n’s persistent data; env-driven name with a sane default

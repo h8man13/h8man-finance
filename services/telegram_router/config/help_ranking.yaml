@@ -1,0 +1,9 @@
+sections:
+  - title: "Portfolio"
+    commands: ["/portfolio", "/portfolio_snapshot", "/portfolio_summary", "/portfolio_breakdown", "/portfolio_digest", "/portfolio_movers", "/allocation", "/allocation_edit", "/tx", "/rename", "/cash", "/cash_add"]
+  - title: "Trading"
+    commands: ["/buy", "/sell", "/add", "/remove"]
+  - title: "Market"
+    commands: ["/price", "/fx"]
+other:
+  order: alpha
