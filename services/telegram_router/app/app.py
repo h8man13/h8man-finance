@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import httpx
 import yaml
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request
+from contextlib import asynccontextmanager
 from fastapi.responses import JSONResponse
 
 from .settings import get_settings, Settings
@@ -24,7 +25,29 @@ from .core.templates import escape_mdv2, paginate, euro, monotable
 from .connectors.http import HTTPClient
 
 
-app = FastAPI(title="Telegram Router")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    s = get_settings()
+    setup_logging(s.ROUTER_LOG_LEVEL)
+    # ensure data dirs
+    os.makedirs(os.path.dirname(s.IDEMPOTENCY_PATH), exist_ok=True)
+    os.makedirs(s.SESSIONS_DIR, exist_ok=True)
+    # optional polling loop
+    poll_task = None
+    if s.TELEGRAM_MODE == "polling" and s.TELEGRAM_BOT_TOKEN:
+        poll_task = asyncio.create_task(_poll_updates())
+    try:
+        yield
+    finally:
+        if poll_task is not None:
+            poll_task.cancel()
+            try:
+                await poll_task
+            except asyncio.CancelledError:
+                pass
+
+
+app = FastAPI(title="Telegram Router", lifespan=lifespan)
 
 
 def setup_logging(level: str):
@@ -40,16 +63,7 @@ def load_yaml(path: str) -> Dict[str, Any]:
         return yaml.safe_load(f) or {}
 
 
-@app.on_event("startup")
-async def on_startup():
-    s = get_settings()
-    setup_logging(s.ROUTER_LOG_LEVEL)
-    # ensure data dirs
-    os.makedirs(os.path.dirname(s.IDEMPOTENCY_PATH), exist_ok=True)
-    os.makedirs(s.SESSIONS_DIR, exist_ok=True)
-    # start polling if requested (dev/local)
-    if s.TELEGRAM_MODE == "polling" and s.TELEGRAM_BOT_TOKEN:
-        asyncio.create_task(_poll_updates())
+# startup handled by lifespan
 
 
 def deps() -> Tuple[Settings, Registry, Dict[str, Any], Dict[str, Any], SessionStore, IdempotencyStore, Dispatcher, HTTPClient]:
@@ -117,7 +131,7 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
         # If ongoing session, treat as input-only
         session = sessions.get(chat_id)
         if not session:
-            return [escape_mdv2("Unknown input. Try /help")] 
+            return [escape_mdv2("Unknown input. Try /help")]
         cmd = session.get("cmd")
         tokens = [t for t in tokens if t]
 
@@ -161,7 +175,7 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
     if not isinstance(resp, dict) or not resp.get("ok", False):
         err = (resp or {}).get("error", {})
         message = err.get("message", "Service error")
-        prefix = copies.get("generic", {}).get("error_prefix", "❗")
+        prefix = copies.get("generic", {}).get("error_prefix", "�?-")
         return [escape_mdv2(f"{prefix} {message}")]
 
     # success mapping by command
@@ -169,7 +183,7 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
         data = resp.get("data", {})
         quotes = data.get("quotes") or []
         # Tabular view for clean readability
-        rows: List[List[str]] = [["SYMBOL", "NOW", "OPEN", "Δ %"]]
+        rows: List[List[str]] = [["SYMBOL", "NOW", "OPEN", "%"]]
         for q in quotes:
             sym = str(q.get("symbol") or "").upper()
             disp = sym.replace(".US", "")
@@ -206,7 +220,7 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
             return [escape_mdv2("Done.")]
 
     # default success
-    done = copies.get("generic", {}).get("done", "✅ Done")
+    done = copies.get("generic", {}).get("done", "�o. Done")
     return [escape_mdv2(done)]
 
 
@@ -262,7 +276,11 @@ async def telegram_webhook(request: Request, x_telegram_bot_api_secret_token: Op
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     payload = await request.json()
-    update = TelegramUpdate.model_validate(payload)
+    # Be lenient: if payload is missing required fields, just ack ok
+    try:
+        update = TelegramUpdate.model_validate(payload)
+    except Exception:
+        return {"ok": True}
     msg = update.get_message()
     if not msg:
         return {"ok": True}

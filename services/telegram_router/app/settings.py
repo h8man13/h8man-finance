@@ -3,14 +3,20 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import List, Optional
 
-from pydantic import BaseSettings, Field, validator
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=False,
+        extra="ignore",
+    )
     # Telegram
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_WEBHOOK_SECRET: str = ""
-    TELEGRAM_MODE: str = Field("polling", regex=r"^(webhook|polling)$")
+    TELEGRAM_MODE: str = Field("polling", pattern=r"^(webhook|polling)$")
     REPLY_PARSE_MODE: str = "MarkdownV2"
 
     # Router
@@ -46,12 +52,9 @@ class Settings(BaseSettings):
                         continue
         return ids
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
+    # Note: Do not define an inner `Config` class alongside `model_config` for pydantic v2
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings()
-
