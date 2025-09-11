@@ -16,3 +16,9 @@ class FXClient:
         pair = f"{base}_{quote}".upper()
         resp = await self.http.request("GET", url, params={"pair": pair})
         return resp.json()
+
+    async def refresh_usdeur(self) -> Dict[str, Any]:
+        """Force refresh the USD_EUR cache and return the latest rate."""
+        url = f"{self.base}/fx"
+        resp = await self.http.request("GET", url, params={"pair": "USD_EUR", "force": True})
+        return resp.json()

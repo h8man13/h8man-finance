@@ -24,18 +24,26 @@
         {"name": "symbols", "type": "string", "required": true, "many": true, "min_items": 1, "max_items": 10}
       ],
       "dispatch": {"service": "market_data", "method": "GET", "path": "/quote", "args_map": {"symbols": "symbols"}},
-      "help": {"usage": "[symbols...]"}
+      "help": {"usage": "[symbols...]", "example": "nvda aapl"}
     },
     {
       "name": "/fx",
       "aliases": [],
       "description": "Latest FX conversion rate",
       "args_schema": [
-        {"name": "base", "type": "string", "required": true},
-        {"name": "quote", "type": "string", "required": true}
+        {"name": "base", "type": "string", "required": false},
+        {"name": "quote", "type": "string", "required": false}
       ],
       "dispatch": {"service": "fx", "method": "GET", "path": "/fx", "args_map": {"base": "base", "quote": "quote"}},
-      "help": {"usage": "[base] [quote]"}
+      "help": {"usage": "[base] [quote]", "example": "usd eur"}
+    },
+    {
+      "name": "/exit",
+      "aliases": [],
+      "description": "Exit current conversation",
+      "args_schema": [],
+      "dispatch": {"service": "router", "method": "LOCAL", "path": "/exit"},
+      "help": {"usage": ""}
     },
     {
       "name": "/portfolio",

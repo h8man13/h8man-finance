@@ -123,7 +123,7 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
     s, registry, copies, ranking, sessions, idemp, dispatcher, http = ctx
     # owner gate
     if sender_id not in s.owner_ids:
-        return [escape_mdv2("Not authorized.")]
+        return [escape_mdv2(copies.get("generic", {}).get("not_authorized", "Not authorized."))]
 
     # parse
     cmd, tokens = parse_text(text)
@@ -131,12 +131,17 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
         # If ongoing session, treat as input-only
         session = sessions.get(chat_id)
         if not session:
-            return [escape_mdv2("Unknown input. Try /help")]
+            return [escape_mdv2(copies.get("generic", {}).get("unknown_input", "Unknown input. Try /help"))]
         cmd = session.get("cmd")
         tokens = [t for t in tokens if t]
 
     # handle /cancel
     if cmd == "/cancel":
+        sessions.clear(chat_id)
+        return [escape_mdv2(copies.get("generic", {}).get("canceled", "Canceled."))]
+
+    # handle /exit (alias for closing any sticky session)
+    if cmd == "/exit":
         sessions.clear(chat_id)
         return [escape_mdv2(copies.get("generic", {}).get("canceled", "Canceled."))]
 
@@ -146,35 +151,54 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
 
     spec = registry.get(cmd)
     if not spec:
-        return [escape_mdv2("Unknown command. Try /help")]
+        # Highlight unknown command
+        return [escape_mdv2((copies.get("generic", {}).get("unknown_command", "Unknown command. Try /help")).format(cmd=cmd))]
+
+    # If switching away from a sticky session to a different command, clear it
+    existing = sessions.get(chat_id) or {}
+    if existing and existing.get("cmd") != spec.name and existing.get("sticky"):
+        sessions.clear(chat_id)
 
     # session merge
-    existing = sessions.get(chat_id) or {}
     got = existing.get("got") if existing.get("cmd") == spec.name else {}
 
     values, missing, err = validate_args(spec.args_schema, tokens, got=got, cmd_name=spec.name)
     if err:
         tpl = copies.get("generic", {}).get("invalid_template", "Invalid")
-        return [escape_mdv2(tpl.format(error=err))]
+        usage = spec.help.get("usage", "")
+        example = spec.help.get("example", "")
+        return [escape_mdv2(tpl.format(error=err, usage=usage, example=example))]
     if missing:
+        # For /price, start a sticky session so user can keep sending symbols
+        sticky = (spec.name == "/price")
         sessions.set(chat_id, {
             "chat_id": chat_id,
             "cmd": spec.name,
             "expected": [f["name"] for f in spec.args_schema],
             "got": values,
             "missing_from": missing,
+            "sticky": sticky,
         })
         usage = spec.help.get("usage", "")
+        example = spec.help.get("example", "")
         tpl = copies.get(spec.name, {}).get("prompt_usage") or copies.get("generic", {}).get("missing_template", "Use: {usage}\nMissing: {missing}")
-        msg = tpl.format(usage=usage, missing=", ".join(missing))
+        msg = tpl.format(usage=usage, missing=", ".join(missing), example=example)
         return [escape_mdv2(msg)]
 
     # ready to dispatch
-    sessions.clear(chat_id)
+    # For sticky /price sessions, keep the session alive after each success
+    clear_after = True
+    if spec.name == "/price" and existing and existing.get("cmd") == "/price" and existing.get("sticky"):
+        clear_after = False
     resp = await dispatcher.dispatch(spec.dispatch, values)
     if not isinstance(resp, dict) or not resp.get("ok", False):
         err = (resp or {}).get("error", {})
         message = err.get("message", "Service error")
+        # Add usage + example to help recover from errors
+        usage = spec.help.get("usage", "")
+        example = spec.help.get("example", "")
+        if usage or example:
+            message = f"{message}\nTry: {usage}\nExample: {example}".strip()
         prefix = copies.get("generic", {}).get("error_prefix", "�?-")
         return [escape_mdv2(f"{prefix} {message}")]
 
@@ -203,14 +227,28 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
             pct_txt = f"{pct:+.1f}%" if pct is not None else "n/a"
             rows.append([f"{disp}{star}", n_txt, o_txt, pct_txt])
         text = monotable(rows) if rows else escape_mdv2("No quotes")
+        # Refresh sticky session TTL if applicable
+        if not clear_after:
+            sessions.set(chat_id, {
+                "chat_id": chat_id,
+                "cmd": "/price",
+                "expected": [f["name"] for f in spec.args_schema],
+                "got": {},
+                "missing_from": [],
+                "sticky": True,
+            })
+        else:
+            sessions.clear(chat_id)
         return [text]
     if spec.name == "/fx":
         data = resp.get("data", {})
         rate = data.get("rate") or data.get("close") or data.get("price")
         # fx upstream returns pair sometimes; keep inputs for clarity
-        base = (values.get("base", "")).upper()
-        quote = (values.get("quote", "")).upper()
+        base = (values.get("base", "") or "USD").upper()
+        quote = (values.get("quote", "") or "EUR").upper()
         tpl = copies.get("/fx", {}).get("success", "{base}/{quote}: {rate}")
+        # Clear session by default for /fx (stateless)
+        sessions.clear(chat_id)
         return [escape_mdv2(tpl.format(base=base, quote=quote, rate=str(rate)))]
     if spec.name in ("/buy", "/sell"):
         tpl = copies.get(spec.name, {}).get("success")
@@ -220,7 +258,7 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
             return [escape_mdv2("Done.")]
 
     # default success
-    done = copies.get("generic", {}).get("done", "�o. Done")
+    done = copies.get("generic", {}).get("done", "Done.")
     return [escape_mdv2(done)]
 
 
