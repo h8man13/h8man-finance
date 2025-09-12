@@ -5,8 +5,8 @@ from typing import List
 from babel.numbers import format_currency
 
 
-# Telegram MarkdownV2 escaping: avoid escaping '.' to keep numbers readable
-MDV2_ESCAPE_CHARS = set("_[]()~`>#+-=|{}!")
+# Telegram MarkdownV2 escaping: avoid escaping '.' and '-' for readability
+MDV2_ESCAPE_CHARS = set("_[]()~`>#+=|{}!")
 
 
 def escape_mdv2(s: str) -> str:

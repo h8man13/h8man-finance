@@ -98,3 +98,61 @@ def test_price_table_output(monkeypatch):
     # Should render a monospaced table surrounded by ``` and include the symbols
     assert txt.startswith("```") and txt.endswith("```")
     assert "AAPL" in txt and "BMW" in txt
+
+
+def test_price_interactive_flow_with_footnote(monkeypatch):
+    import app.app as appmod  # type: ignore
+    from app.app import deps  # type: ignore
+
+    ctx = deps()
+    s, registry, copies, ranking, sessions, idemp, dispatcher, http = ctx
+
+    # 1) Start interactive with no symbols
+    out1 = appmod.asyncio.run(appmod.process_text(chat_id=3101, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/price", ctx=ctx))
+    assert out1 and "what symbols" in out1[0].lower()
+    assert sessions.get(3101) and sessions.get(3101).get("cmd") == "/price"
+
+    # 2) Provide symbols and expect table + interactive footnote
+    async def _fake_dispatch(spec, args):
+        if spec.get("service") == "market_data":
+            return {"ok": True, "data": {"quotes": [
+                {"symbol": "AAPL.US", "price_eur": 100.0, "open_eur": 95.0, "market": "US", "provider": "EODHD", "freshness": "Live"},
+            ]}}
+        return {"ok": True, "data": {}}
+
+    monkeypatch.setattr(appmod.Dispatcher, "dispatch", lambda self, spec, args: _fake_dispatch(spec, args))
+
+    out2 = appmod.asyncio.run(appmod.process_text(chat_id=3101, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="aapl", ctx=ctx))
+    assert out2 and out2[0]
+    txt2 = out2[0]
+    # Table and Provider/Freshness columns present
+    assert txt2.startswith("```") and "PROVIDER" in txt2 and "FRESHNESS" in txt2
+    # Interactive hint present (contains ttl minutes wording)
+    assert "auto-closes" in txt2.lower()
+    # Session should still be open (sticky)
+    assert sessions.get(3101) and sessions.get(3101).get("cmd") == "/price"
+
+
+def test_price_one_shot_no_interactive_hint(monkeypatch):
+    import app.app as appmod  # type: ignore
+    from app.app import deps  # type: ignore
+
+    ctx = deps()
+    s, registry, copies, ranking, sessions, idemp, dispatcher, http = ctx
+
+    async def _fake_dispatch(spec, args):
+        if spec.get("service") == "market_data":
+            return {"ok": True, "data": {"quotes": [
+                {"symbol": "AAPL.US", "price_eur": 100.0, "open_eur": 95.0, "market": "US", "provider": "EODHD", "freshness": "Live"},
+            ]}}
+        return {"ok": True, "data": {}}
+
+    monkeypatch.setattr(appmod.Dispatcher, "dispatch", lambda self, spec, args: _fake_dispatch(spec, args))
+
+    out = appmod.asyncio.run(appmod.process_text(chat_id=3201, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/price aapl", ctx=ctx))
+    assert out and out[0]
+    txt = out[0]
+    # No interactive hint in one-shot
+    assert "auto-closes" not in txt.lower()
+    # Session cleared
+    assert sessions.get(3201) is None

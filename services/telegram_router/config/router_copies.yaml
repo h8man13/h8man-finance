@@ -5,7 +5,7 @@ generic:
   missing_template: "Let’s complete that: {missing}\nTry: {usage}\nExample: {example}"
   invalid_template: "Hmm, that didn’t look right — {error}\nTry: {usage}\nExample: {example}"
   header_help: "*Commands*"
-  not_authorized: "Sorry — you’re not allowed yet."
+  not_authorized: "Not authorized."
   unknown_input: "Didn’t catch that. Try /help"
   unknown_command: "Unknown command: `{cmd}`\nTry /help"
 
