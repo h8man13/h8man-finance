@@ -11,6 +11,18 @@
 **/.pytest_cache/
 n8n_data/
 
+# service runtime data (mounted or created locally)
+# telegram_router runtime data dir (sessions, idempotency)
+services/telegram_router/data/
+# fx sqlite cache dir
+services/fx/data/
+# generic service data dirs (if created locally)
+services/*/data/
+
+# fallback local artifacts when env overrides point to repo root
+idempotency.json
+sessions/
+
 # OS noise
 .DS_Store
 Thumbs.db
