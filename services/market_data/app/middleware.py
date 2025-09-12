@@ -40,6 +40,8 @@ def _normalize_quote_item(item: dict) -> dict:
         base["freshness"] = item.get("freshness")
     if "freshness_note" in item:
         base["freshness_note"] = item.get("freshness_note")
+    if "fresh_time" in item:
+        base["fresh_time"] = item.get("fresh_time")
     return base
 
 

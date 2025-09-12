@@ -49,7 +49,16 @@ def _exchange_tz_and_start(sym: str) -> Tuple[ZoneInfo, time]:
     tz = _zoneinfo_safe(entry[0])
     return tz, entry[1]
 
-def classify_freshness(symbol: str, ts: datetime, flags: Dict[str, object] | None = None) -> Tuple[str, str]:
+_TZ_ABBR = {
+    "America/New_York": "NY",
+    "Europe/Berlin": "Berlin",
+    "Europe/London": "London",
+    "Asia/Tokyo": "Tokyo",
+    "Asia/Hong_Kong": "HK",
+    "Europe/Zurich": "Zurich",
+}
+
+def classify_freshness(symbol: str, ts: datetime, flags: Dict[str, object] | None = None) -> Tuple[str, str, str]:
     """
     Return (label, note) such as ("Live", "During regular session") or ("Previous close", "End of day price").
     Rules:
@@ -59,7 +68,10 @@ def classify_freshness(symbol: str, ts: datetime, flags: Dict[str, object] | Non
     """
     flags = flags or {}
     if bool(flags.get("eod") or flags.get("is_eod") or flags.get("delayed") or flags.get("is_delayed")):
-        return "Previous close", "End of day price"
+        tz, _ = _exchange_tz_and_start(symbol)
+        abbr = _TZ_ABBR.get(str(tz.key), "") if hasattr(tz, "key") else ""
+        label = (abbr + " EOD").strip()
+        return "Previous close", "End of day price", label
 
     if ts.tzinfo is None:
         ts = ts.replace(tzinfo=timezone.utc)
@@ -69,5 +81,8 @@ def classify_freshness(symbol: str, ts: datetime, flags: Dict[str, object] | Non
     ts_local = ts.astimezone(tz)
 
     if ts_local.date() == now_local.date() and now_local.time() >= start:
-        return "Live", "During regular session"
-    return "Previous close", "Last trading day"
+        abbr = _TZ_ABBR.get(str(tz.key), "") if hasattr(tz, "key") else ""
+        tlabel = f"{abbr} {ts_local.strftime('%H:%M')}".strip()
+        return "Live", "During regular session", tlabel
+    abbr = _TZ_ABBR.get(str(tz.key), "") if hasattr(tz, "key") else ""
+    return "Previous close", "Last trading day", (abbr + " EOD").strip()

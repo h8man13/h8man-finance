@@ -183,6 +183,11 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
         example = spec.help.get("example", "")
         tpl = copies.get(spec.name, {}).get("prompt_usage") or copies.get("generic", {}).get("missing_template", "Use: {usage}\nMissing: {missing}")
         msg = tpl.format(usage=usage, missing=", ".join(missing), example=example)
+        # In interactive /price mode, add sticky footnote with TTL
+        if sticky:
+            ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
+            hint = f"You can send more symbols now. This session auto-closes after {ttl_min} minute(s) of inactivity or when you run a new command."
+            msg = f"{msg}\n\n{hint}"
         return [escape_mdv2(msg)]
 
     # ready to dispatch
@@ -224,7 +229,7 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
             return [escape_mdv2(msg)]
 
         # Tabular view for clean readability
-        rows: List[List[str]] = [["SYMBOL", "NOW", "OPEN", "%", "PROVIDER", "FRESHNESS"]]
+        rows: List[List[str]] = [["SYMBOL", "NOW", "OPEN", "%", "MARKET", "FRESHNESS"]]
         for q in quotes:
             sym = str(q.get("symbol") or "").upper()
             disp = sym.replace(".US", "")
@@ -242,9 +247,11 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
             n_txt = euro(now_eur) if now_eur is not None else "n/a"
             o_txt = euro(open_eur) if open_eur is not None else "n/a"
             pct_txt = f"{pct:+.1f}%" if pct is not None else "n/a"
-            provider = str(q.get("provider") or "").upper() or "EODHD"
+            market_col = market or "-"
             freshness = str(q.get("freshness") or "").strip() or "n/a"
-            rows.append([f"{disp}{star}", n_txt, o_txt, pct_txt, provider, freshness])
+            ftime = str(q.get("fresh_time") or "").strip()
+            fcol = f"{freshness} ({ftime})".strip() if ftime else freshness
+            rows.append([f"{disp}{star}", n_txt, o_txt, pct_txt, market_col, fcol])
         text = monotable(rows) if rows else escape_mdv2("No quotes")
         # Refresh sticky session TTL if applicable
         if not clear_after:
@@ -271,13 +278,22 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
     if spec.name == "/fx":
         data = resp.get("data", {})
         rate = data.get("rate") or data.get("close") or data.get("price")
+        pair = (str(data.get("pair")) or "").upper()
         # fx upstream returns pair sometimes; keep inputs for clarity
         base = (values.get("base", "") or "USD").upper()
         quote = (values.get("quote", "") or "EUR").upper()
+        # Invert if user requested EUR/USD but upstream pair is USD_EUR
+        rate_disp = rate
+        try:
+            rnum = float(rate)
+        except Exception:
+            rnum = None
+        if pair == "USD_EUR" and base == "EUR" and quote == "USD" and rnum and rnum != 0.0:
+            rate_disp = 1.0 / rnum
         tpl = copies.get("/fx", {}).get("success", "{base}/{quote}: {rate}")
         # Clear session by default for /fx (stateless)
         sessions.clear(chat_id)
-        return [escape_mdv2(tpl.format(base=base, quote=quote, rate=str(rate)))]
+        return [escape_mdv2(tpl.format(base=base, quote=quote, rate=str(rate_disp)))]
     if spec.name in ("/buy", "/sell"):
         tpl = copies.get(spec.name, {}).get("success")
         if tpl:

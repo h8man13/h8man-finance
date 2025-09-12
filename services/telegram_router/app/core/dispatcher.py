@@ -36,9 +36,10 @@ class Dispatcher:
                 base = (payload.get("base") or "").strip()
                 quote = (payload.get("quote") or "").strip()
                 if not base and not quote:
-                    # No args → refresh USD_EUR cache
-                    return await self.fx.refresh_usdeur()
-                return await self.fx.get_fx(base=base, quote=quote)
+                    # Default to last USD/EUR (no force refresh)
+                    return await self.fx.get_fx(base="USD", quote="EUR")
+                # Fallback defaults if one side missing
+                return await self.fx.get_fx(base=base or "USD", quote=quote or "EUR")
 
         # Portfolio core
         if service == "portfolio_core":
@@ -57,3 +58,4 @@ class Dispatcher:
 
         # Unknown mapping
         return {"ok": False, "error": {"code": "unknown_dispatch", "message": f"No route for {service} {method} {path}"}}
+

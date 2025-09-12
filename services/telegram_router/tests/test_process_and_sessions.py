@@ -125,8 +125,8 @@ def test_price_interactive_flow_with_footnote(monkeypatch):
     out2 = appmod.asyncio.run(appmod.process_text(chat_id=3101, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="aapl", ctx=ctx))
     assert out2 and out2[0]
     txt2 = out2[0]
-    # Table and Provider/Freshness columns present
-    assert txt2.startswith("```") and "PROVIDER" in txt2 and "FRESHNESS" in txt2
+    # Table includes Market and Freshness columns
+    assert txt2.startswith("```") and "MARKET" in txt2 and "FRESHNESS" in txt2
     # Interactive hint present (contains ttl minutes wording)
     assert "auto-closes" in txt2.lower()
     # Session should still be open (sticky)
@@ -156,3 +156,36 @@ def test_price_one_shot_no_interactive_hint(monkeypatch):
     assert "auto-closes" not in txt.lower()
     # Session cleared
     assert sessions.get(3201) is None
+
+
+def test_price_prompt_has_footnote(monkeypatch):
+    import app.app as appmod  # type: ignore
+    from app.app import deps  # type: ignore
+
+    ctx = deps()
+    s, registry, copies, ranking, sessions, idemp, dispatcher, http = ctx
+
+    out = appmod.asyncio.run(appmod.process_text(chat_id=3301, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/price", ctx=ctx))
+    assert out and out[0]
+    txt = out[0].lower()
+    assert "auto-closes" in txt
+    assert sessions.get(3301) and sessions.get(3301).get("cmd") == "/price"
+
+
+def test_fx_default_no_args(monkeypatch):
+    import app.app as appmod  # type: ignore
+    from app.app import deps  # type: ignore
+
+    ctx = deps()
+    s, registry, copies, ranking, sessions, idemp, dispatcher, http = ctx
+
+    async def _fake_dispatch(spec, args):
+        if spec.get("service") == "fx":
+            return {"ok": True, "data": {"pair": "USD_EUR", "rate": 1.1}}
+        return {"ok": True, "data": {}}
+
+    monkeypatch.setattr(appmod.Dispatcher, "dispatch", lambda self, spec, args: _fake_dispatch(spec, args))
+
+    out = appmod.asyncio.run(appmod.process_text(chat_id=3401, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/fx", ctx=ctx))
+    assert out and out[0]
+    assert "USD/EUR" in out[0] or "usd/eur" in out[0].lower()

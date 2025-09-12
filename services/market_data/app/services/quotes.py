@@ -53,7 +53,7 @@ async def get_quotes(conn, symbols: List[str]) -> Dict:
 
         ts = datetime.fromtimestamp(int(item.get("timestamp")), tz=timezone.utc)
         # Freshness classification (best-effort)
-        fres_label, fres_note = classify_freshness(symbol, ts, {
+        fres_label, fres_note, fres_time = classify_freshness(symbol, ts, {
             "eod": item.get("is_eod") or item.get("eod"),
             "delayed": item.get("is_delayed") or item.get("delayed"),
         })
@@ -70,6 +70,7 @@ async def get_quotes(conn, symbols: List[str]) -> Dict:
             "provider": "EODHD",
             "freshness": fres_label,
             "freshness_note": fres_note,
+            "fresh_time": fres_time,
         })
 
     payload = {"quotes": out}
