@@ -23,7 +23,7 @@ def _normalize_quote_item(item: dict) -> dict:
     pct = None
     if price_ccy is not None and open_ccy not in (None, 0):
         pct = round(((price_ccy / open_ccy) - 1.0) * 100.0, 2)
-    return {
+    base = {
         "symbol": sym,
         "ccy": ccy,
         "price_ccy": price_ccy,
@@ -33,6 +33,14 @@ def _normalize_quote_item(item: dict) -> dict:
         "pct_since_open": pct,
         "ts_price": ts_price,
     }
+    # Pass through provider and freshness if present to aid UIs like Telegram router
+    if "provider" in item:
+        base["provider"] = item.get("provider")
+    if "freshness" in item:
+        base["freshness"] = item.get("freshness")
+    if "freshness_note" in item:
+        base["freshness_note"] = item.get("freshness_note")
+    return base
 
 
 def _safe_headers(headers) -> dict:
@@ -101,4 +109,3 @@ class AuthShieldMiddleware(BaseHTTPMiddleware):
                 },
                 status_code=200,
             )
-

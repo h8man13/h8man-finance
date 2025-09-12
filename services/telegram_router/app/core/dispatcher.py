@@ -33,7 +33,12 @@ class Dispatcher:
         # FX
         if service == "fx":
             if path == "/fx" and method == "GET":
-                return await self.fx.get_fx(base=payload.get("base", ""), quote=payload.get("quote", ""))
+                base = (payload.get("base") or "").strip()
+                quote = (payload.get("quote") or "").strip()
+                if not base and not quote:
+                    # No args → refresh USD_EUR cache
+                    return await self.fx.refresh_usdeur()
+                return await self.fx.get_fx(base=base, quote=quote)
 
         # Portfolio core
         if service == "portfolio_core":

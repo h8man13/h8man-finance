@@ -1,12 +1,13 @@
 generic:
   error_prefix: "❗"
   done: "✅ Done"
-  canceled: "Canceled."
-  missing_template: "Use: {usage}\nMissing: {missing}"
-  invalid_template: "{error}\nTry /help"
+  canceled: "Okay, closed."
+  missing_template: "Let’s complete that: {missing}\nTry: {usage}\nExample: {example}"
+  invalid_template: "Hmm, that didn’t look right — {error}\nTry: {usage}\nExample: {example}"
   header_help: "*Commands*"
-  not_authorized: "Sorry, you’re not allowed yet."
+  not_authorized: "Not authorized."
   unknown_input: "Didn’t catch that. Try /help"
+  unknown_command: "Unknown command: `{cmd}`\nTry /help"
 
 "/buy":
   prompt_usage: "Use: [qty] [symbol] [price_ccy]"
@@ -17,12 +18,15 @@ generic:
   success: "sell: *{symbol}* ×{qty} @ {price_ccy}"
 
 "/price":
-  prompt_usage: "Use: [symbols...]"
+  prompt_usage: "What symbols should I check? (e.g. NVDA AAPL)"
   success: "{text}"
 
 "/fx":
-  prompt_usage: "Use: [base] [quote]"
+  prompt_usage: "Use: [base] [quote] (e.g. USD EUR)"
   success: "{base}/{quote}: {rate}"
+
+"/exit":
+  prompt_usage: "Use: /exit to close the conversation"
 
 "/portfolio":
   prompt_usage: "Use: /portfolio"

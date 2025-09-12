@@ -39,6 +39,10 @@ def _env_setup(tmp_path_factory):
 def app():
     # Allow importing the service-local package
     sys.path.insert(0, os.path.abspath("services/telegram_router"))
+    # Avoid collision with market_data package name 'app' by clearing any cached modules
+    for k in list(sys.modules.keys()):
+        if k == "app" or k.startswith("app."):
+            sys.modules.pop(k, None)
     from app.app import app as fastapi_app  # type: ignore
     return fastapi_app
 
@@ -61,3 +65,13 @@ def capture_telegram(monkeypatch):
     monkeypatch.setattr(appmod, "send_telegram_message", _fake_send)
     return sent
 
+
+# Ensure Python can import the router service package regardless of test import order
+@pytest.fixture(scope="session", autouse=True)
+def _path_setup():
+    sys.path.insert(0, os.path.abspath("services/telegram_router"))
+    # Ensure we import the router's app package, not market_data's
+    for k in list(sys.modules.keys()):
+        if k == "app" or k.startswith("app."):
+            sys.modules.pop(k, None)
+    yield

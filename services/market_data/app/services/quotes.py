@@ -7,6 +7,7 @@ from ..clients.fx import FxClient
 from ..db import cache_get, cache_set
 from ..settings import settings
 from ..utils.symbols import normalize_symbol, infer_market_currency
+from ..utils.time import classify_freshness
 
 def qd(x: Decimal, q: str = "0.01") -> str:
     return str(x.quantize(Decimal(q), rounding=ROUND_HALF_UP))
@@ -51,6 +52,11 @@ async def get_quotes(conn, symbols: List[str]) -> Dict:
             open_eur = open_px
 
         ts = datetime.fromtimestamp(int(item.get("timestamp")), tz=timezone.utc)
+        # Freshness classification (best-effort)
+        fres_label, fres_note = classify_freshness(symbol, ts, {
+            "eod": item.get("is_eod") or item.get("eod"),
+            "delayed": item.get("is_delayed") or item.get("delayed"),
+        })
 
         out.append({
             "symbol": symbol,
@@ -61,6 +67,9 @@ async def get_quotes(conn, symbols: List[str]) -> Dict:
             "open": qd(open_px) if open_px is not None else None,
             "open_eur": qd(open_eur) if open_eur is not None else None,
             "ts": ts.isoformat(),
+            "provider": "EODHD",
+            "freshness": fres_label,
+            "freshness_note": fres_note,
         })
 
     payload = {"quotes": out}
