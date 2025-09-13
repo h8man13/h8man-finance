@@ -1,8 +1,12 @@
 snippets:
   session_hint:
-    - footnote: "You can send more symbols now. This session auto-closes after {ttl_min} minute(s) of inactivity or when you run a new command."
+    - quote:
+        lines:
+          - "You can send more symbols now. This session auto-closes after {ttl_min} minute(s) of inactivity or when you run a new command."
   provider_note_us:
-    - footnote: "When you are in Berlin but request .US, the provider may show US prices only during US market hours. This is a provider limitation."
+    - quote:
+        lines:
+          - "When you are in Berlin but request .US, the provider may show US prices only during US market hours. This is a provider limitation."
 
 screens:
   help:
