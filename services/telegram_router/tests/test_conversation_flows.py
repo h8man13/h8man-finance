@@ -9,6 +9,8 @@ def test_help_via_test_endpoint(client, capture_telegram, monkeypatch):
     txt = capture_telegram[0]["text"].lower()
     assert "commands" in txt
     assert "/price" in txt or "price" in txt
+    # Should include blockquote markers for command usage
+    assert ">" in capture_telegram[0]["text"]
 
 
 def test_price_interactive_no_quotes_prompts_again_and_sticky(monkeypatch):
@@ -94,7 +96,7 @@ def test_fx_inversion_display(monkeypatch):
     out = appmod.asyncio.run(appmod.process_text(chat_id=5401, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/fx eur usd", ctx=ctx))
     assert out and out[0]
     txt = out[0].lower()
-    assert "eur/usd" in txt and ("0.5" in txt or "0,5" in txt or "0\.5" in txt)
+    assert "eur/usd" in txt and ("0.5" in txt or "0,5" in txt or r"0\.5" in txt)
 
 
 def test_price_market_column_defaults_to_us(monkeypatch):

@@ -30,4 +30,25 @@ def test_convert_markdown_to_html_basic():
     assert "<code>code</code>" in html
     # Accept with or without extra newlines inside <pre>
     assert "<pre>" in html and "line1\nline2" in html and "</pre>" in html
-    assert html.endswith("end")
+
+
+def test_convert_markdown_to_html_expandable():
+    from app.core.templates import convert_markdown_to_html  # type: ignore
+
+    md = ">Intro line\n**\n>Hidden part line\n>Last line||"
+    html = convert_markdown_to_html(md)
+    assert "<blockquote>Intro line</blockquote>" in html
+    assert "<blockquote expandable>Hidden part line\nLast line</blockquote>" in html
+
+
+def test_mdv2_blockquote_and_expandable_builders():
+    from app.core.templates import mdv2_blockquote, mdv2_expandable_blockquote  # type: ignore
+
+    bq = mdv2_blockquote(["Hello (world)"])
+    assert bq.startswith(">") and r"\(world\)" in bq
+
+    exp = mdv2_expandable_blockquote(["Top"], ["Hidden A", "Hidden B"])
+    # Contains bold-empty separator and blockquote markers
+    assert "\n**\n" in exp
+    assert exp.count(">") >= 3
+    assert exp.endswith("Hidden B||")

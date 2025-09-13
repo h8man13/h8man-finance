@@ -36,6 +36,9 @@ def _sanitize_item(d: Dict[str, Any]) -> Dict[str, Any]:
             if _is_numeric(d.get(k)):
                 d["close"] = str(d[k])
                 break
+    # Ensure 'open' is numeric or None
+    if not _is_numeric(d.get("open")):
+        d["open"] = None
     return d
 
 class EodhdClient:

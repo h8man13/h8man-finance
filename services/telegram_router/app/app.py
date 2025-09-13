@@ -21,7 +21,7 @@ from .core.validator import validate_args
 from .core.sessions import SessionStore
 from .core.idempotency import IdempotencyStore
 from .core.dispatcher import Dispatcher
-from .core.templates import escape_mdv2, paginate, euro, monotable, safe_escape_mdv2_with_fences, convert_markdown_to_html
+from .core.templates import escape_mdv2, paginate, euro, monotable, safe_escape_mdv2_with_fences, convert_markdown_to_html, mdv2_blockquote, mdv2_expandable_blockquote
 from .connectors.http import HTTPClient
 
 
@@ -145,33 +145,48 @@ async def send_telegram_message(token: str, chat_id: int, text: str, parse_mode:
 
 
 def build_help_text(registry: Registry, copies: Dict[str, Any], ranking: Dict[str, Any]) -> str:
-    header = copies.get("generic", {}).get("header_help", "*Commands*")
-    lines: List[str] = [header]
-    by_name = {c.name: c for c in registry.all()}
+    # Main header from copies, but format as bold+underline per spec
+    raw_header = copies.get("generic", {}).get("header_help", "Commands")
+    # Strip common MDV2 markers if present in copies
+    for ch in "*_":
+        raw_header = raw_header.replace(ch, "")
+    lines: List[str] = [f"*__{escape_mdv2(raw_header.strip())}__*"]
 
+    by_name = {c.name: c for c in registry.all()}
     used = set()
+
+    def _render_cmd(c) -> List[str]:
+        usage = c.help.get("usage", "")
+        example = c.help.get("example", "")
+        head = f"{c.name} {usage}".strip()
+        bq_lines = [head]
+        if example:
+            bq_lines.append(f"Example: {example}")
+        return [mdv2_blockquote(bq_lines)]
+
+    # Ranked sections
     for sec in ranking.get("sections", []):
-        title = sec.get("title", "")
+        title = (sec.get("title", "") or "").strip()
         cmds = sec.get("commands", [])
         if title:
-            lines.append(escape_mdv2(f"\n{title}"))
+            lines.append(f"\n*__{escape_mdv2(title)}__*")
         for name in cmds:
-            if name in by_name:
-                c = by_name[name]
-                usage = c.help.get("usage", "")
-                lines.append(f"{escape_mdv2(c.name)} {escape_mdv2(usage)}".strip())
-                used.add(name)
+            c = by_name.get(name)
+            if not c:
+                continue
+            lines.extend(_render_cmd(c))
+            used.add(name)
 
-    # other commands sorted alpha
+    # Other commands sorted alpha
     remaining = [c for c in registry.all() if c.name not in used]
     remaining.sort(key=lambda c: c.name)
     if remaining:
-        lines.append(escape_mdv2("\nOther"))
+        other_hdr = copies.get("generic", {}).get("other_header", "Other")
+        lines.append(f"\n*__{escape_mdv2(other_hdr)}__*")
     for c in remaining:
-        usage = c.help.get("usage", "")
-        lines.append(f"{escape_mdv2(c.name)} {escape_mdv2(usage)}".strip())
+        lines.extend(_render_cmd(c))
 
-    return "\n".join(lines)
+    return "\n".join([ln for ln in lines if ln is not None])
 
 
 async def process_text(chat_id: int, sender_id: int, text: str, ctx):
@@ -223,10 +238,20 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
 
     values, missing, err = validate_args(spec.args_schema, tokens, got=got, cmd_name=spec.name)
     if err:
-        tpl = copies.get("generic", {}).get("invalid_template", "Invalid")
+        tpl = copies.get("generic", {}).get("invalid_template", "Invalid\nTry: {usage}\nExample: {example}")
         usage = spec.help.get("usage", "")
         example = spec.help.get("example", "")
-        return [escape_mdv2(tpl.format(error=err, usage=usage, example=example))]
+        rendered = tpl.format(error=err, usage=usage, example=example)
+        parts = rendered.split("\n")
+        header = parts[0]
+        bq_lines: List[str] = []
+        for line in parts[1:]:
+            if line.strip():
+                bq_lines.append(line)
+        text = escape_mdv2(header)
+        if bq_lines:
+            text = f"{text}\n\n" + mdv2_blockquote(bq_lines)
+        return [text]
     if missing:
         # For /price, start a sticky session so user can keep sending symbols
         sticky = (spec.name == "/price")
@@ -240,8 +265,17 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
         })
         usage = spec.help.get("usage", "")
         example = spec.help.get("example", "")
-        tpl = copies.get(spec.name, {}).get("prompt_usage") or copies.get("generic", {}).get("missing_template", "Use: {usage}\nMissing: {missing}")
-        msg = tpl.format(usage=usage, missing=", ".join(missing), example=example)
+        tpl = copies.get(spec.name, {}).get("prompt_usage") or copies.get("generic", {}).get("missing_template", "Use: {usage}\nMissing: {missing}\nTry: {usage}\nExample: {example}")
+        rendered = tpl.format(usage=usage, missing=", ".join(missing), example=example)
+        parts = rendered.split("\n")
+        header = parts[0]
+        bq_lines: List[str] = []
+        for line in parts[1:]:
+            if line.strip():
+                bq_lines.append(line)
+        msg = escape_mdv2(header)
+        if bq_lines:
+            msg = f"{msg}\n\n" + mdv2_blockquote(bq_lines)
         # In interactive /price mode, add sticky footnote with TTL
         if sticky:
             ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
@@ -324,27 +358,29 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
             })
         else:
             sessions.clear(chat_id)
-        # Common footnotes (partial failures) in all modes
-        footnotes_common: List[str] = []
+        # Common footnotes (partial failures) in all modes -> use blockquote
+        footnotes_common_str = ""
         if resp.get("partial") or (isinstance(resp.get("error"), dict) and resp.get("error", {}).get("details")):
             details = resp.get("error", {}).get("details", {}) if isinstance(resp.get("error"), dict) else {}
             failed = details.get("symbols_failed") or []
             if failed:
-                footnotes_common.append(escape_mdv2("Some symbols were not found: " + ", ".join(failed)))
+                head = "Some symbols were not found:"
+                body = [" ".join(failed)] if isinstance(failed, list) else [str(failed)]
+                footnotes_common_str = mdv2_expandable_blockquote([head], body)
 
         # Footnotes only in interactive mode (sticky)
         if not clear_after:
-            footnotes: List[str] = []
-            # Provider-hour caveat
-            footnotes.append(escape_mdv2("Note: When you’re in Berlin but request .US, the provider may show US prices during US market hours. This is a provider limitation."))
-            # Interactive hint while sticky
+            # Provider-hour caveat and sticky hint from copies
             ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
-            footnotes.append(escape_mdv2(f"You can send more symbols now. This session auto-closes after {ttl_min} minute(s) of inactivity or when you run a new command."))
-            if footnotes_common:
-                footnotes.extend(footnotes_common)
-            text = f"{text}\n\n" + "\n".join(footnotes)
-        elif footnotes_common:
-            text = f"{text}\n\n" + "\n".join(footnotes_common)
+            caveat = copies.get("/price", {}).get("caveat") or "Note: Provider limitations may apply."
+            hint_tpl = copies.get("/price", {}).get("sticky_hint") or "You can send more symbols now. This session auto-closes after {ttl_min} minute(s) of inactivity or when you run a new command."
+            hint = hint_tpl.format(ttl_min=ttl_min)
+            blk1 = mdv2_blockquote([caveat])
+            blk2 = mdv2_blockquote([hint])
+            foot = "\n\n".join([blk1, blk2] + ([footnotes_common_str] if footnotes_common_str else []))
+            text = f"{text}\n\n{foot}"
+        elif footnotes_common_str:
+            text = f"{text}\n\n{footnotes_common_str}"
         return [text]
     if spec.name == "/fx":
         data = resp.get("data", {})
@@ -475,3 +511,4 @@ async def telegram_test(body: TestRouteIn):
         for chunk in paginate(r):
             await send_telegram_message(s.TELEGRAM_BOT_TOKEN, chat_id, chunk, s.REPLY_PARSE_MODE)
     return {"ok": True}
+

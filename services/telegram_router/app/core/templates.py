@@ -48,6 +48,44 @@ def safe_escape_mdv2_with_fences(text: str, strict: bool = False) -> str:
     return "".join(out_parts)
 
 
+def mdv2_blockquote(lines: List[str], *, exclude_escape: set[str] | None = None) -> str:
+    """Build a MarkdownV2 blockquote from content lines.
+    Each content line is escaped per MDV2 and prefixed with '>'.
+    """
+    exclude_escape = exclude_escape or set()
+    def _esc(s: str) -> str:
+        # Escape per MDV2 but allow certain characters to remain unescaped
+        out = []
+        for ch in s:
+            if ch in MDV2_ESCAPE_CHARS and ch not in exclude_escape:
+                out.append("\\" + ch)
+            else:
+                out.append(ch)
+        return "".join(out)
+    out = []
+    for ln in lines:
+        out.append(">" + _esc(ln))
+    return "\n".join(out)
+
+
+def mdv2_expandable_blockquote(intro_lines: List[str], expanded_lines: List[str]) -> str:
+    """
+    Build an expandable blockquote per Telegram MarkdownV2 trick:
+    - A normal blockquote section
+    - A bold-empty separator line '**'
+    - A second blockquote section; ensure last line ends with '||'
+    """
+    top = mdv2_blockquote(intro_lines)
+    # Ensure last expanded line has '||'
+    exp_lines = list(expanded_lines)
+    if exp_lines:
+        if not str(exp_lines[-1]).endswith("||"):
+            exp_lines[-1] = str(exp_lines[-1]) + "||"
+    # Do not escape '|' so the '||' marker remains intact for Telegram
+    bottom = mdv2_blockquote(exp_lines, exclude_escape={"|"})
+    return f"{top}\n**\n{bottom}"
+
+
 def _html_escape(s: str) -> str:
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
 
@@ -83,37 +121,65 @@ def convert_markdown_to_html(text: str) -> str:
             else:
                 out.append(f"<pre>{code_esc}</pre>")
         else:
-            # Escape basic HTML first
-            s = _html_escape(seg)
-            # inline code
-            s = re.sub(r"`([^`]+)`", r"<code>\1</code>", s)
-            # underline, strike, spoiler (MDV2 variants)
-            s = re.sub(r"__([^_]+)__", r"<u>\1</u>", s)
-            s = re.sub(r"~([^~]+)~", r"<s>\1</s>", s)
-            s = re.sub(r"\|\|(.+?)\|\|", r"<tg-spoiler>\1</tg-spoiler>", s)
-            # bold and italic (non-greedy)
-            s = re.sub(r"\*(.+?)\*", r"<b>\1</b>", s)
-            # avoid matching double-underscore underline
-            s = re.sub(r"(?<!_)_(?!_)(.+?)(?<!_)_(?!_)", r"<i>\1</i>", s)
-            # inline links [text](url)
-            s = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", lambda m: f"<a href=\"{_html_escape(m.group(2))}\">{m.group(1)}</a>", s)
-            # blockquotes starting with '>' lines -> <blockquote>
-            lines = s.splitlines()
-            out_lines: List[str] = []
-            block: List[str] = []
-            def flush_block():
-                nonlocal out_lines, block
-                if block:
-                    out_lines.append("<blockquote>" + "\\n".join(block) + "</blockquote>")
-                    block = []
-            for ln in lines:
-                if ln.startswith(">"):
-                    block.append(ln.lstrip(">"))
+            # Parse blockquotes and expandable separator '**' on raw seg, then format
+            raw_lines = seg.splitlines()
+            blocks: List[dict] = []  # {type: 'quote'|'text', lines: [...], expandable: bool}
+            cur: List[str] = []
+            in_quote = False
+            expandable_next = False
+            def push_cur():
+                nonlocal cur, in_quote, expandable_next
+                if not cur:
+                    return
+                if in_quote:
+                    blocks.append({"type": "quote", "lines": cur[:], "expandable": expandable_next})
+                    expandable_next = False
                 else:
-                    flush_block()
-                    out_lines.append(ln)
-            flush_block()
-            out.append("\n".join(out_lines))
+                    blocks.append({"type": "text", "lines": cur[:]})
+                cur = []
+            for ln in raw_lines:
+                if ln.strip() == "**":
+                    push_cur()
+                    in_quote = False
+                    expandable_next = True  # next quote block becomes expandable
+                    continue
+                if ln.startswith(">"):
+                    if not in_quote:
+                        push_cur()
+                        in_quote = True
+                    cur.append(ln.lstrip(">"))
+                else:
+                    if in_quote:
+                        push_cur()
+                        in_quote = False
+                    cur.append(ln)
+            push_cur()
+
+            def fmt_inline(t: str) -> str:
+                s = _html_escape(t)
+                s = re.sub(r"`([^`]+)`", r"<code>\1</code>", s)
+                s = re.sub(r"__([^_]+)__", r"<u>\1</u>", s)
+                s = re.sub(r"~([^~]+)~", r"<s>\1</s>", s)
+                s = re.sub(r"\|\|(.+?)\|\|", r"<tg-spoiler>\1</tg-spoiler>", s)
+                s = re.sub(r"\*(.+?)\*", r"<b>\1</b>", s)
+                s = re.sub(r"(?<!_)_(?!_)(.+?)(?<!_)_(?!_)", r"<i>\1</i>", s)
+                s = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", lambda m: f"<a href=\"{_html_escape(m.group(2))}\">{m.group(1)}</a>", s)
+                return s
+
+            for b in blocks:
+                if b["type"] == "quote":
+                    # For expandable quotes, strip trailing '||' marker from last line
+                    lines_q = list(b["lines"]) if b["lines"] else []
+                    if b.get("expandable") and lines_q:
+                        if str(lines_q[-1]).endswith("||"):
+                            lines_q[-1] = str(lines_q[-1])[:-2]
+                    content = "\n".join(fmt_inline(x) for x in lines_q).strip("\n")
+                    if b.get("expandable"):
+                        out.append(f"<blockquote expandable>{content}</blockquote>")
+                    else:
+                        out.append(f"<blockquote>{content}</blockquote>")
+                else:
+                    out.append("\n".join(fmt_inline(x) for x in b["lines"]))
     return "".join(out)
 
 
