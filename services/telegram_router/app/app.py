@@ -21,7 +21,7 @@ from .core.validator import validate_args
 from .core.sessions import SessionStore
 from .core.idempotency import IdempotencyStore
 from .core.dispatcher import Dispatcher
-from .core.templates import escape_mdv2, paginate, euro, monotable
+from .core.templates import escape_mdv2, paginate, euro, monotable, safe_escape_mdv2_with_fences, convert_markdown_to_html
 from .connectors.http import HTTPClient
 
 
@@ -88,6 +88,7 @@ async def send_telegram_message(token: str, chat_id: int, text: str, parse_mode:
             "disable_web_page_preview": True,
         }
         try:
+            # 1) Try MarkdownV2 as-is
             r = await client.post(url, json=payload)
             ok = False
             try:
@@ -97,15 +98,46 @@ async def send_telegram_message(token: str, chat_id: int, text: str, parse_mode:
                     json_log(action="send_telegram", status="api_error", chat_id=chat_id, code=js.get("error_code"), description=js.get("description"))
             except Exception:
                 json_log(action="send_telegram", status="bad_response", chat_id=chat_id, http_status=r.status_code)
+
+            # 2) Retry with stricter MarkdownV2 escaping (outside code fences)
             if not ok:
-                # Fallback: resend without parse_mode (plain text)
-                payload_fallback = dict(payload)
-                payload_fallback.pop("parse_mode", None)
-                rr = await client.post(url, json=payload_fallback)
+                text2 = safe_escape_mdv2_with_fences(text, strict=True)
+                payload2 = dict(payload)
+                payload2["text"] = text2
+                r2 = await client.post(url, json=payload2)
                 try:
-                    js2 = rr.json()
-                    if not bool(js2.get("ok")):
-                        json_log(action="send_telegram", status="fallback_failed", chat_id=chat_id, code=js2.get("error_code"), description=js2.get("description"))
+                    js2 = r2.json()
+                    ok = bool(js2.get("ok"))
+                    if not ok:
+                        json_log(action="send_telegram", status="api_error_strict", chat_id=chat_id, code=js2.get("error_code"), description=js2.get("description"))
+                except Exception:
+                    json_log(action="send_telegram", status="bad_response_strict", chat_id=chat_id, http_status=r2.status_code)
+
+            # 3) Fallback to HTML parse_mode
+            if not ok:
+                html = convert_markdown_to_html(text)
+                payload_html = dict(payload)
+                payload_html["text"] = html
+                payload_html["parse_mode"] = "HTML"
+                r3 = await client.post(url, json=payload_html)
+                try:
+                    js3 = r3.json()
+                    ok = bool(js3.get("ok"))
+                    if not ok:
+                        json_log(action="send_telegram", status="api_error_html", chat_id=chat_id, code=js3.get("error_code"), description=js3.get("description"))
+                except Exception:
+                    json_log(action="send_telegram", status="bad_response_html", chat_id=chat_id, http_status=r3.status_code)
+
+            # 4) Last resort: plain text
+            if not ok:
+                payload_plain = dict(payload)
+                payload_plain.pop("parse_mode", None)
+                payload_plain["text"] = text
+                rr = await client.post(url, json=payload_plain)
+                try:
+                    js4 = rr.json()
+                    if not bool(js4.get("ok")):
+                        json_log(action="send_telegram", status="fallback_failed", chat_id=chat_id, code=js4.get("error_code"), description=js4.get("description"))
                 except Exception:
                     json_log(action="send_telegram", status="fallback_bad_response", chat_id=chat_id, http_status=rr.status_code)
         except Exception as e:
