@@ -306,15 +306,14 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
         partial = bool(resp.get("partial"))
         details = resp.get("error", {}).get("details", {}) if isinstance(resp.get("error"), dict) else {}
         failed = details.get("symbols_failed") or []
-        # Compute effective missing list if upstream didn't supply details
-        eff_failed = failed
-        if partial and (not eff_failed) and values.get("symbols"):
-            requested = [str(x).upper() for x in (values.get("symbols") or [])]
-            present = [str(q.get("symbol") or "").upper() for q in quotes]
-            # Match bare symbols to any returned symbol starting with that (e.g., AMZN -> AMZN.US)
-            eff_failed = [s for s in requested if not any(p.startswith(s) for p in present)]
+        # Compute effective missing list: use upstream details if present; otherwise derive from request vs response
+        requested = [str(x).upper() for x in (values.get("symbols") or [])] if isinstance(values.get("symbols"), list) else []
+        present = [str(q.get("symbol") or "").upper() for q in quotes]
+        derived_missing = [s for s in requested if not any(p.startswith(s) for p in present)] if requested else []
+        eff_failed = failed or derived_missing
         data_ui = {"table_rows": rows, "not_found_symbols": (eff_failed or [])}
-        if partial and isinstance(eff_failed, list) and eff_failed:
+        has_missing = isinstance(eff_failed, list) and len(eff_failed) > 0
+        if has_missing:
             pages = render_screen(ui, "price_partial_error", data_ui)
         elif partial:
             pages = render_screen(ui, "price_partial_note", data_ui)
@@ -335,7 +334,7 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
             sessions.clear(chat_id)
         # Common footnotes (partial failures) if we didn't already render a partial-error screen
         footnotes_common_str = ""
-        if not (partial and isinstance(eff_failed, list) and eff_failed):
+        if not has_missing:
             if resp.get("partial") or (isinstance(resp.get("error"), dict) and resp.get("error", {}).get("details")):
                 details = resp.get("error", {}).get("details", {}) if isinstance(resp.get("error"), dict) else {}
                 failed2 = details.get("symbols_failed") or eff_failed or []
@@ -354,7 +353,7 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
             # Re-render interactive variants via UI
             ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
             data_ui = {"table_rows": rows, "not_found_symbols": (eff_failed or []), "ttl_min": ttl_min}
-            if partial and isinstance(eff_failed, list) and eff_failed:
+            if has_missing:
                 # Minimal interactive output: table + missing list
                 pages2 = render_screen(ui, "price_partial_error", data_ui)
             elif partial:
