@@ -250,15 +250,19 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
         quotes = data.get("quotes") or []
         # If no quotes, prompt again (keep session open if sticky)
         if not quotes:
-            # keep sticky session alive
-            sessions.set(chat_id, {
-                "chat_id": chat_id,
-                "cmd": "/price",
-                "expected": [f["name"] for f in spec.args_schema],
-                "got": {},
-                "missing_from": [],
-                "sticky": True,
-            })
+            # keep sticky only if we were already in an interactive /price session
+            keep_sticky = bool(existing and existing.get("cmd") == "/price" and existing.get("sticky"))
+            if keep_sticky:
+                sessions.set(chat_id, {
+                    "chat_id": chat_id,
+                    "cmd": "/price",
+                    "expected": [f["name"] for f in spec.args_schema],
+                    "got": {},
+                    "missing_from": [],
+                    "sticky": True,
+                })
+            else:
+                sessions.clear(chat_id)
             # Prefer UI screens showing missing symbols when available
             ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
             details = resp.get("error", {}).get("details", {}) if isinstance(resp.get("error"), dict) else {}
@@ -268,7 +272,8 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
                 req = [str(x).upper() for x in (values.get("symbols") or [])]
                 failed = req
             if isinstance(failed, list) and failed:
-                pages = render_screen(ui, "price_prompt_missing", {"ttl_min": ttl_min, "not_found_symbols": failed})
+                key = "price_not_found_interactive" if keep_sticky else "price_not_found"
+                pages = render_screen(ui, key, {"ttl_min": ttl_min, "not_found_symbols": [str(x).upper() for x in failed]})
             else:
                 pages = render_screen(ui, "price_prompt", {"ttl_min": ttl_min})
             return [p for p in pages]
@@ -312,9 +317,7 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
         if partial and isinstance(eff_failed, list) and eff_failed:
             pages = render_screen(ui, "price_partial_error", data_ui)
         elif partial:
-            p = render_screen(ui, "price_result", data_ui)[0]
-            p = f"{p}\n\n" + mdv2_blockquote(["Some symbols were not found."])
-            pages = [p]
+            pages = render_screen(ui, "price_partial_note", data_ui)
         else:
             pages = render_screen(ui, "price_result", data_ui)
         text = pages[0]
@@ -352,9 +355,10 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
             ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
             data_ui = {"table_rows": rows, "not_found_symbols": (eff_failed or []), "ttl_min": ttl_min}
             if partial and isinstance(eff_failed, list) and eff_failed:
-                pages2 = render_screen(ui, "price_partial_error_interactive", data_ui)
+                # Minimal interactive output: table + missing list
+                pages2 = render_screen(ui, "price_partial_error", data_ui)
             elif partial:
-                pages2 = render_screen(ui, "price_partial_note_interactive", data_ui)
+                pages2 = render_screen(ui, "price_partial_note", data_ui)
             else:
                 pages2 = render_screen(ui, "price_result_interactive", data_ui)
             text = pages2[0]

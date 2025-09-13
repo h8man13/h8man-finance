@@ -103,16 +103,28 @@ screens:
       - paragraph: "Some symbols were not found:"
       - bullets:
           items: "{not_found_symbols}"
-      - include: provider_note_us
-      - include: session_hint
+  price_not_found:
+    blocks:
+      - paragraph: "Some symbols were not found:"
+      - bullets:
+          items: "{not_found_symbols}"
+
+  price_not_found_interactive:
+    blocks:
+      - paragraph: "Some symbols were not found:"
+      - bullets:
+          items: "{not_found_symbols}"
 
   price_partial_note_interactive:
     blocks:
       - table:
           rows: "{table_rows}"
       - paragraph: "Some symbols were not found."
-      - include: provider_note_us
-      - include: session_hint
+  price_partial_note:
+    blocks:
+      - table:
+          rows: "{table_rows}"
+      - paragraph: "Some symbols were not found."
 
   unknown_input:
     blocks:
