@@ -81,15 +81,35 @@ def deps() -> Tuple[Settings, Registry, Dict[str, Any], Dict[str, Any], SessionS
 async def send_telegram_message(token: str, chat_id: int, text: str, parse_mode: str = "MarkdownV2"):
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     async with httpx.AsyncClient(timeout=8.0) as client:
+        payload = {
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": parse_mode,
+            "disable_web_page_preview": True,
+        }
         try:
-            await client.post(url, json={
-                "chat_id": chat_id,
-                "text": text,
-                "parse_mode": parse_mode,
-                "disable_web_page_preview": True,
-            })
+            r = await client.post(url, json=payload)
+            ok = False
+            try:
+                js = r.json()
+                ok = bool(js.get("ok"))
+                if not ok:
+                    json_log(action="send_telegram", status="api_error", chat_id=chat_id, code=js.get("error_code"), description=js.get("description"))
+            except Exception:
+                json_log(action="send_telegram", status="bad_response", chat_id=chat_id, http_status=r.status_code)
+            if not ok:
+                # Fallback: resend without parse_mode (plain text)
+                payload_fallback = dict(payload)
+                payload_fallback.pop("parse_mode", None)
+                rr = await client.post(url, json=payload_fallback)
+                try:
+                    js2 = rr.json()
+                    if not bool(js2.get("ok")):
+                        json_log(action="send_telegram", status="fallback_failed", chat_id=chat_id, code=js2.get("error_code"), description=js2.get("description"))
+                except Exception:
+                    json_log(action="send_telegram", status="fallback_bad_response", chat_id=chat_id, http_status=rr.status_code)
         except Exception as e:
-            json_log(action="send_telegram", status="error", error=str(e), chat_id=chat_id)
+            json_log(action="send_telegram", status="exception", error=str(e), chat_id=chat_id)
 
 
 def build_help_text(registry: Registry, copies: Dict[str, Any], ranking: Dict[str, Any]) -> str:

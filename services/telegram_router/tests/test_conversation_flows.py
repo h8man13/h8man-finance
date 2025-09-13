@@ -297,3 +297,61 @@ def test_fx_error_handling(monkeypatch):
     l = out[0].lower()
     assert ("service error" in l) or ("fx down" in l)
     assert "try:" in l
+
+
+def test_end_to_end_user_flow(monkeypatch):
+    """Simulate the flow reported by the user in one chat."""
+    import app.app as appmod  # type: ignore
+    from app.app import deps  # type: ignore
+
+    ctx = deps()
+    s, registry, copies, ranking, sessions, idemp, dispatcher, http = ctx
+
+    async def _fake_dispatch(spec, args):
+        if spec.get("service") == "market_data":
+            syms = args.get("symbols") or []
+            # normalize inputs in tests
+            syms = [str(x).upper() for x in syms]
+            if syms == ["AMZN"] or syms == ["GOOG"]:
+                return {"ok": True, "data": {"quotes": [{"symbol": f"{syms[0]}.US", "price_eur": 100.0, "open_eur": 100.0, "market": "US"}]}}
+            if "NOPE.US" in syms and any(s in ("AMZN","GOOG") for s in syms):
+                return {"ok": True, "partial": True, "error": {"code": "NOT_FOUND", "message": "bad", "details": {"symbols_failed": ["NOPE.US"]}}, "data": {"quotes": [{"symbol": "AMZN.US", "price_eur": 100.0, "open_eur": 100.0, "market": "US"}]}}
+            if "NOPE.US" in syms and len(syms) == 1:
+                return {"ok": False, "error": {"code": "NOT_FOUND", "message": "symbol not recognized"}}
+            return {"ok": True, "data": {"quotes": []}}
+        if spec.get("service") == "fx":
+            return {"ok": True, "data": {"pair": "USD_EUR", "rate": 1.2}}
+        return {"ok": True, "data": {}}
+
+    monkeypatch.setattr(appmod.Dispatcher, "dispatch", lambda self, spec, args: _fake_dispatch(spec, args))
+
+    chat = 6001
+    owner = (s.owner_ids[0] if s.owner_ids else 0)
+
+    # /p amzn -> table
+    o1 = appmod.asyncio.run(appmod.process_text(chat_id=chat, sender_id=owner, text="/p amzn", ctx=ctx))
+    assert o1 and o1[0].startswith("```")
+
+    # /p -> prompt
+    o2 = appmod.asyncio.run(appmod.process_text(chat_id=chat, sender_id=owner, text="/p", ctx=ctx))
+    assert o2 and "what symbols" in o2[0].lower()
+
+    # amzn -> table
+    o3 = appmod.asyncio.run(appmod.process_text(chat_id=chat, sender_id=owner, text="amzn", ctx=ctx))
+    assert o3 and o3[0].startswith("```")
+
+    # /help -> reply
+    o4 = appmod.asyncio.run(appmod.process_text(chat_id=chat, sender_id=owner, text="/help", ctx=ctx))
+    assert o4 and "commands" in o4[0].lower()
+
+    # /p goog -> table
+    o5 = appmod.asyncio.run(appmod.process_text(chat_id=chat, sender_id=owner, text="/p goog", ctx=ctx))
+    assert o5 and o5[0].startswith("```")
+
+    # /fx -> default USD/EUR
+    o6 = appmod.asyncio.run(appmod.process_text(chat_id=chat, sender_id=owner, text="/fx", ctx=ctx))
+    assert o6 and ("usd/eur" in o6[0].lower())
+
+    # /p amzn nope.us -> partial footnote or service error
+    o7 = appmod.asyncio.run(appmod.process_text(chat_id=chat, sender_id=owner, text="/p amzn nope.us", ctx=ctx))
+    assert o7 and ("some symbols were not found" in o7[0].lower() or "service error" in o7[0].lower())
