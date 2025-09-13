@@ -21,7 +21,7 @@ from .core.validator import validate_args
 from .core.sessions import SessionStore
 from .core.idempotency import IdempotencyStore
 from .core.dispatcher import Dispatcher
-from .core.templates import escape_mdv2, paginate, euro, monotable, safe_escape_mdv2_with_fences, convert_markdown_to_html, mdv2_blockquote, mdv2_expandable_blockquote
+from .core.templates import escape_mdv2, paginate, euro, monotable, safe_escape_mdv2_with_fences, convert_markdown_to_html, mdv2_blockquote, mdv2_expandable_blockquote, render_blocks
 from .connectors.http import HTTPClient
 
 
@@ -61,6 +61,27 @@ def json_log(**kwargs):
 def load_yaml(path: str) -> Dict[str, Any]:
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
+
+
+def _render_prompt(data) -> str:
+    """Render a prompt from copies.prompts.* supporting either:
+    - string (multi-line): 1st line header + blockquoted rest
+    - blocks (list[dict]): rendered via render_blocks
+    """
+    if not data:
+        return ""
+    # Structured blocks
+    if isinstance(data, list):
+        return render_blocks(data)
+    # Fallback: multi-line string
+    text = str(data)
+    lines = [ln.rstrip() for ln in text.splitlines()]
+    head = lines[0] if lines else ""
+    rest = [ln for ln in lines[1:] if ln.strip()]
+    msg = escape_mdv2(head)
+    if rest:
+        msg = f"{msg}\n\n" + mdv2_blockquote(rest)
+    return msg
 
 
 # startup handled by lifespan
@@ -201,7 +222,11 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
         # If ongoing session, treat as input-only
         session = sessions.get(chat_id)
         if not session:
-            return [escape_mdv2(copies.get("generic", {}).get("unknown_input", "Unknown input. Try /help"))]
+            # Structured unknown input with a hint
+            header = copies.get("generic", {}).get("unknown_input", "Unknown input.")
+            txt = escape_mdv2(header)
+            txt = f"{txt}\n\n" + mdv2_blockquote(["Try: /help"])
+            return [txt]
         cmd = session.get("cmd")
         tokens = [t for t in tokens if t]
 
@@ -225,8 +250,12 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
 
     spec = registry.get(cmd)
     if not spec:
-        # Highlight unknown command
-        return [escape_mdv2((copies.get("generic", {}).get("unknown_command", "Unknown command. Try /help")).format(cmd=cmd))]
+        # Highlight unknown command with a hint
+        tmpl = copies.get("generic", {}).get("unknown_command", "Unknown command: {cmd}")
+        header = tmpl.format(cmd=cmd)
+        txt = escape_mdv2(header)
+        txt = f"{txt}\n\n" + mdv2_blockquote(["Try: /help"])
+        return [txt]
 
     # If switching away from a sticky session to a different command, clear it
     existing = sessions.get(chat_id) or {}
@@ -263,25 +292,40 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
             "missing_from": missing,
             "sticky": sticky,
         })
-        usage = spec.help.get("usage", "")
-        example = spec.help.get("example", "")
-        tpl = copies.get(spec.name, {}).get("prompt_usage") or copies.get("generic", {}).get("missing_template", "Use: {usage}\nMissing: {missing}\nTry: {usage}\nExample: {example}")
-        rendered = tpl.format(usage=usage, missing=", ".join(missing), example=example)
-        parts = rendered.split("\n")
-        header = parts[0]
-        bq_lines: List[str] = []
-        for line in parts[1:]:
-            if line.strip():
-                bq_lines.append(line)
-        msg = escape_mdv2(header)
-        if bq_lines:
-            msg = f"{msg}\n\n" + mdv2_blockquote(bq_lines)
+        # Prefer per-command blocks, then prompts.*, otherwise fall back
+        msg = None
+        cmd_cfg = copies.get(spec.name, {}) or {}
+        if isinstance(cmd_cfg.get("prompt_blocks"), list):
+            msg = _render_prompt(cmd_cfg.get("prompt_blocks"))
+        if msg is None and spec.name == "/price":
+            prompts_cfg = (copies.get("prompts", {}) or {})
+            prompt_blocks = prompts_cfg.get("ask_symbols_price_blocks")
+            if isinstance(prompt_blocks, list):
+                msg = _render_prompt(prompt_blocks)
+            else:
+                prompt = prompts_cfg.get("ask_symbols_price")
+                if prompt:
+                    msg = _render_prompt(prompt)
+        if not msg:
+            usage = spec.help.get("usage", "")
+            example = spec.help.get("example", "")
+            tpl = copies.get(spec.name, {}).get("prompt_usage") or copies.get("generic", {}).get("missing_template", "Use: {usage}\nMissing: {missing}\nTry: {usage}\nExample: {example}")
+            rendered = tpl.format(usage=usage, missing=", ".join(missing), example=example)
+            parts = rendered.split("\n")
+            header = parts[0]
+            bq_lines: List[str] = []
+            for line in parts[1:]:
+                if line.strip():
+                    bq_lines.append(line)
+            msg = escape_mdv2(header)
+            if bq_lines:
+                msg = f"{msg}\n\n" + mdv2_blockquote(bq_lines)
         # In interactive /price mode, add sticky footnote with TTL
         if sticky:
             ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
             hint = f"You can send more symbols now. This session auto-closes after {ttl_min} minute(s) of inactivity or when you run a new command."
-            msg = f"{msg}\n\n{hint}"
-        return [escape_mdv2(msg)]
+            msg = f"{msg}\n\n{escape_mdv2(hint)}"
+        return [msg]
 
     # ready to dispatch
     # For sticky /price sessions, keep the session alive after each success
@@ -315,6 +359,20 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
                 "missing_from": [],
                 "sticky": True,
             })
+            # Prefer per-command blocks, then prompts.*, otherwise fall back
+            cmd_cfg = copies.get("/price", {}) or {}
+            if isinstance(cmd_cfg.get("prompt_blocks"), list):
+                msg = _render_prompt(cmd_cfg.get("prompt_blocks"))
+                return [msg]
+            prompts_cfg = (copies.get("prompts", {}) or {})
+            prompt_blocks = prompts_cfg.get("ask_symbols_price_blocks")
+            if isinstance(prompt_blocks, list):
+                msg = _render_prompt(prompt_blocks)
+                return [msg]
+            prompt = prompts_cfg.get("ask_symbols_price")
+            if prompt:
+                msg = _render_prompt(prompt)
+                return [msg]
             usage = spec.help.get("usage", "")
             example = spec.help.get("example", "")
             tpl = copies.get(spec.name, {}).get("prompt_usage") or copies.get("generic", {}).get("missing_template", "Use: {usage}\nMissing: {missing}")
@@ -400,7 +458,13 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
         tpl = copies.get("/fx", {}).get("success", "{base}/{quote}: {rate}")
         # Clear session by default for /fx (stateless)
         sessions.clear(chat_id)
-        return [escape_mdv2(tpl.format(base=base, quote=quote, rate=str(rate_disp)))]
+        # Display: round to 4 decimals for communication purposes,
+        # but leave upstream data untouched for any calculations elsewhere.
+        try:
+            rate_str = f"{float(rate_disp):.4f}"
+        except Exception:
+            rate_str = str(rate_disp)
+        return [escape_mdv2(tpl.format(base=base, quote=quote, rate=rate_str))]
     if spec.name in ("/buy", "/sell"):
         tpl = copies.get(spec.name, {}).get("success")
         if tpl:
@@ -511,4 +575,7 @@ async def telegram_test(body: TestRouteIn):
         for chunk in paginate(r):
             await send_telegram_message(s.TELEGRAM_BOT_TOKEN, chat_id, chunk, s.REPLY_PARSE_MODE)
     return {"ok": True}
+
+
+
 

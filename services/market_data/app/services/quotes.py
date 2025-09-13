@@ -38,10 +38,17 @@ async def get_quotes(conn, symbols: List[str]) -> Dict:
         symbol = normalize_symbol(code)
         market, ccy = infer_market_currency(symbol)
 
-        # Last and open in native
-        last = Decimal(str(item.get("close")))
+        # Last and open in native (robust against bad provider values)
+        try:
+            last = Decimal(str(item.get("close")))
+        except Exception:
+            # Skip items without a valid last price
+            continue
         o = item.get("open")
-        open_px = Decimal(str(o)) if o is not None else None
+        try:
+            open_px = Decimal(str(o)) if o is not None else None
+        except Exception:
+            open_px = None
 
         # EUR conversion rules
         if ccy == "USD":
@@ -51,7 +58,11 @@ async def get_quotes(conn, symbols: List[str]) -> Dict:
             price_eur = last
             open_eur = open_px
 
-        ts = datetime.fromtimestamp(int(item.get("timestamp")), tz=timezone.utc)
+        try:
+            ts = datetime.fromtimestamp(int(item.get("timestamp")), tz=timezone.utc)
+        except Exception:
+            # Fallback to current time if timestamp is missing or invalid
+            ts = datetime.now(timezone.utc)
         # Freshness classification (best-effort)
         fres_label, fres_note, fres_time = classify_freshness(symbol, ts, {
             "eod": item.get("is_eod") or item.get("eod"),

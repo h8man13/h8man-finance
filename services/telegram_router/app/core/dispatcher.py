@@ -42,7 +42,9 @@ class Dispatcher:
                 b = base or "USD"
                 q = quote or "EUR"
                 try:
-                    data = await self.fx.get_fx(base=b, quote=q)
+                    # Always fetch a fresh USD_EUR rate for user-initiated /fx
+                    # (router will invert for display if needed)
+                    data = await self.fx.refresh_usdeur()
                     # Wrap raw FX payload in envelope for router flow
                     return {"ok": True, "data": data}
                 except Exception as e:

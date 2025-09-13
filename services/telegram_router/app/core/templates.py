@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-from typing import List
+from typing import List, Dict, Any
 import re
 
 from babel.numbers import format_currency
 
 
-# Telegram MarkdownV2 escaping: avoid escaping '.' to keep numbers readable
-# Also leave '-' unescaped for readability
-# Full MarkdownV2 escape set outside entities per Telegram spec
-MDV2_ESCAPE_CHARS = set("_*[]()~`>#+-=|{}.!")
+# Telegram MarkdownV2 escaping:
+# Keep '.' and '-' unescaped for readability, escape the rest per spec.
+MDV2_ESCAPE_CHARS = set("_*[]()~`>#+=|{}!")
 
 
 def escape_mdv2(s: str) -> str:
@@ -22,7 +21,7 @@ def escape_mdv2(s: str) -> str:
     return "".join(out)
 
 
-STRICT_ESCAPE_CHARS = set("_[]()~`>#+-=|{}!.\\")  # includes '-' '.' and backslash
+STRICT_ESCAPE_CHARS = set("_[]()~`>#+-=|{}!.\\")  # strict mode, includes backslash and dot
 
 
 def escape_mdv2_strict(s: str) -> str:
@@ -212,6 +211,23 @@ def monotable(rows: List[List[str]]) -> str:
     return f"```\n{body}\n```"
 
 
+# ---------- Tiny formatting helpers for consistent visuals ----------
+
+def section(title: str) -> str:
+    """Bold section title with a trailing blank line."""
+    return f"*{escape_mdv2(title)}*\n"
+
+
+def footnote(text: str) -> str:
+    """Italic note line (no blockquote). Caller can compose surrounding blank lines."""
+    return f"_{escape_mdv2(text)}_"
+
+
+def bullet(lines: List[str]) -> str:
+    """Plain bullet list; items should already be escaped or code-formatted by caller."""
+    return "\n".join([f"• {line}" for line in lines])
+
+
 def euro(n: float) -> str:
     try:
         return format_currency(n, "EUR", locale="de_DE")
@@ -229,3 +245,62 @@ def paginate(text: str, limit: int = 4096) -> List[str]:
         chunks.append(text[start:end])
         start = end
     return chunks
+
+
+# ---------- Block renderer (design-system style) ----------
+
+def render_blocks(blocks: List[Dict[str, Any]]) -> str:
+    """
+    Render a list of blocks into a Telegram MarkdownV2-safe string.
+    Supported block types:
+      - header: {type: 'header', text}
+      - text:   {type: 'text', text}
+      - quote:  {type: 'quote', lines: [..]}
+      - bullets:{type: 'bullets', items: [..]}
+      - code:   {type: 'code', text[, language]}
+      - separator: {type: 'separator'} -> blank line between sections
+
+    Notes:
+    - All content is escaped for MDV2 where appropriate.
+    - For 'quote', each line is escaped and prefixed with '>' via mdv2_blockquote.
+    - Blocks are joined with a blank line between them.
+    """
+    out: List[str] = []
+    for b in blocks or []:
+        btype = str(b.get('type') or '').lower()
+        if btype == 'header':
+            txt = str(b.get('text') or '')
+            out.append(escape_mdv2(txt))
+        elif btype == 'text':
+            txt = str(b.get('text') or '')
+            out.append(escape_mdv2(txt))
+        elif btype == 'quote':
+            lines = b.get('lines') or []
+            lines = [str(x) for x in lines]
+            out.append(mdv2_blockquote(lines))
+        elif btype == 'bullets':
+            items = b.get('items') or []
+            items = [escape_mdv2(str(x)) for x in items]
+            out.append(bullet(items))
+        elif btype == 'code':
+            txt = str(b.get('text') or '')
+            lang = str(b.get('language') or '').strip()
+            if lang:
+                out.append(f"```\n{lang}\n{txt}\n```")
+            else:
+                out.append(f"```\n{txt}\n```")
+        elif btype in ('separator', 'hr'):
+            out.append("")  # will collapse to an extra blank line between blocks
+        else:
+            # Unknown -> treat as plain text
+            txt = str(b.get('text') or '')
+            if txt:
+                out.append(escape_mdv2(txt))
+    # Join with a blank line between blocks; remove leading/trailing empties
+    # Keep multiple separators minimal by stripping empty lines at edges
+    cleaned: List[str] = []
+    for part in out:
+        if part is None:
+            continue
+        cleaned.append(part)
+    return "\n\n".join([p for p in cleaned if p is not None])

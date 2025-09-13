@@ -6,75 +6,188 @@ generic:
   invalid_template: "Hmm, that didn’t look right — {error}\nTry: {usage}\nExample: {example}"
   header_help: "*Commands*"
   other_header: "Other"
+  internal_error: "Internal error"
+  try_help: "Try /help"
   not_authorized: "Not authorized."
   unknown_input: "Didn’t catch that. Try /help"
   unknown_command: "Unknown command: `{cmd}`\nTry /help"
 
 "/buy":
-  prompt_usage: "Use: [qty] [symbol] [price_ccy]"
+  prompt_blocks:
+    - type: header
+      text: "Use: [qty] [symbol] [price_ccy]"
   success: "buy: *{symbol}* ×{qty} @ {price_ccy}"
 
 "/sell":
-  prompt_usage: "Use: [qty] [symbol] [price_ccy]"
+  prompt_blocks:
+    - type: header
+      text: "Use: [qty] [symbol] [price_ccy]"
   success: "sell: *{symbol}* ×{qty} @ {price_ccy}"
 
 "/price":
-  prompt_usage: "What symbols should I check? (e.g. NVDA AAPL)"
+  prompt_blocks:
+    - type: header
+      text: "What symbols should I check?"
+    - type: quote
+      lines:
+        - "Send 1 to 10 tickers separated by space."
+        - "Example: `/price nvda aapl`"
+        - "Default: `.us`. Add suffix for other markets, e.g. `.xetra`."
   success: "{text}"
   caveat: "Note: When you're in Berlin but request .US, the provider may show US prices during US market hours. This is a provider limitation."
   sticky_hint: "You can send more symbols now. This session auto-closes after {ttl_min} minute(s) of inactivity or when you run a new command."
+  no_quotes: "No quotes"
 
 "/fx":
-  prompt_usage: "Use: [base] [quote] (e.g. USD EUR)"
+  prompt_blocks:
+    - type: header
+      text: "Use: [base] [quote] (e.g. USD EUR). Default: USD EUR. Live rate; display rounded to 4 decimals."
   success: "{base}/{quote}: {rate}"
 
 "/exit":
-  prompt_usage: "Use: /exit to close the conversation"
+  prompt_blocks:
+    - type: header
+      text: "Use: /exit to close the conversation"
 
 "/portfolio":
-  prompt_usage: "Use: /portfolio"
+  prompt_blocks:
+    - type: header
+      text: "Use: /portfolio"
   empty: "No portfolio yet. Start with /add or /cash_add."
   header: "*Portfolio*"
 
 "/add":
-  prompt_usage: "Use: [qty] [symbol] [type]"
+  prompt_blocks:
+    - type: header
+      text: "Use: [qty] [symbol] [type]"
 
 "/remove":
-  prompt_usage: "Use: [symbol]"
+  prompt_blocks:
+    - type: header
+      text: "Use: [symbol]"
 
 "/cash":
-  prompt_usage: "Use: /cash"
+  prompt_blocks:
+    - type: header
+      text: "Use: /cash"
 
 "/cash_add":
-  prompt_usage: "Use: [amount]"
+  prompt_blocks:
+    - type: header
+      text: "Use: [amount]"
 
 "/tx":
-  prompt_usage: "Use: [n]"
+  prompt_blocks:
+    - type: header
+      text: "Use: [n]"
   header: "*Transactions*"
 
 "/portfolio_snapshot":
-  prompt_usage: "Use: [period=d|w|m|y]"
+  prompt_blocks:
+    - type: header
+      text: "Use: [period=d|w|m|y]"
 
 "/portfolio_summary":
-  prompt_usage: "Use: [period=d|w|m|y]"
+  prompt_blocks:
+    - type: header
+      text: "Use: [period=d|w|m|y]"
 
 "/portfolio_breakdown":
-  prompt_usage: "Use: [period=d|w|m|y]"
+  prompt_blocks:
+    - type: header
+      text: "Use: [period=d|w|m|y]"
 
 "/portfolio_digest":
-  prompt_usage: "Use: [period=d|w|m|y]"
+  prompt_blocks:
+    - type: header
+      text: "Use: [period=d|w|m|y]"
 
 "/portfolio_movers":
-  prompt_usage: "Use: [period=d|w|m|y]"
+  prompt_blocks:
+    - type: header
+      text: "Use: [period=d|w|m|y]"
 
 "/allocation":
-  prompt_usage: "Use: /allocation"
+  prompt_blocks:
+    - type: header
+      text: "Use: /allocation"
 
 "/allocation_edit":
-  prompt_usage: "Use: [etf,stocks,crypto]"
+  prompt_blocks:
+    - type: header
+      text: "Use: [etf,stocks,crypto]"
 
 "/po_if":
-  prompt_usage: "Use: [scope] [+x%|-x%]"
+  prompt_blocks:
+    - type: header
+      text: "Use: [scope] [+x%|-x%]"
 
 "/rename":
-  prompt_usage: "Use: [symbol] [nickname]"
+  prompt_blocks:
+    - type: header
+      text: "Use: [symbol] [nickname]"
+
+# ---------- Meta / UX tone ----------
+meta:
+  tone: "concise, friendly, no fluff"
+  lang: "en"
+
+# ---------- Sessions ----------
+session:
+  opened: "You can send more symbols now. This session auto closes after 5 minutes of inactivity or when you run a new command."
+  closed: "Okay, closed."
+  idle_timeout_note: "If you stay inactive, I will close the session to keep things tidy."
+
+# ---------- Prompts (migrated into per-command prompt_blocks) ----------
+
+# ---------- Success (not used; removed for clarity) ----------
+
+# ---------- Errors and guidance ----------
+errors:
+  unknown_command: "I did not catch that. Try `/help`."
+  bad_input_generic: "Invalid input."
+  price_args_required: "Pattern: `/price [symbols...]` (e.g. `nvda aapl`)."
+  fx_args_invalid: "Pattern: `/fx [base] [quote]` (e.g. `usd eur`)."
+  not_found_symbols: "Some symbols were not found."
+
+# ---------- Help ----------
+help:
+  title: "Commands"
+  intro: "Here is what I can do right now."
+  body: |
+    *Portfolio*
+    • `/portfolio`
+    • `/portfolio_snapshot d|w|m|y`
+    • `/portfolio_summary d|w|m|y`
+    • `/portfolio_breakdown d|w|m|y`
+    • `/portfolio_digest d|w|m|y`
+    • `/portfolio_movers d|w|m|y`
+    • `/allocation`
+    • `/allocation_edit [etf,stocks,crypto]`
+    • `/rename [symbol] [nickname]`
+    • `/tx [n]`
+    • `/cash`
+    • `/cash_add [amount]`
+
+    *Trading*
+    • `/buy [qty] [symbol] [price_ccy]`
+    • `/sell [qty] [symbol] [price_ccy]`
+    • `/add [qty] [symbol] [type]`
+    • `/remove [symbol]`
+
+    *Market*
+    • `/price [symbols...]`
+    • `/fx [base] [quote]`
+
+    *Other*
+    • `/cancel`
+    • `/exit`
+  footnote: "Tip: each command shows its input pattern in backticks, so you know exactly how to use it."
+
+# ---------- Reusable snippets (unused; removed for clarity) ----------
+
+# ---------- Rare warnings ----------
+warnings:
+  provider_market_hours: |
+    >Live US prices are available only during US market hours.
+    >If the market is closed, values may reflect the last close.
