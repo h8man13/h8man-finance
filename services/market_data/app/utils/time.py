@@ -14,17 +14,17 @@ def to_berlin(dt: datetime) -> datetime:
     return dt.astimezone(TZ)
 
 # Minimal, extendable mapping of market suffix -> (tz, regular session start HH:MM)
-_EXCHANGE_TZ_START: Dict[str, Tuple[str, time]] = {
-    "US": ("America/New_York", time(9, 30)),
-    "XETRA": ("Europe/Berlin", time(9, 0)),
-    "DE": ("Europe/Berlin", time(9, 0)),  # Frankfurt/Deutsche Börse
-    "F": ("Europe/Berlin", time(9, 0)),    # Frankfurt suffix .F
-    "LSE": ("Europe/London", time(8, 0)),
-    "L": ("Europe/London", time(8, 0)),    # London alt suffix .L
-    "SIX": ("Europe/Zurich", time(9, 0)),
-    "TSE": ("Asia/Tokyo", time(9, 0)),
-    "T": ("Asia/Tokyo", time(9, 0)),       # Tokyo alt suffix .T
-    "HK": ("Asia/Hong_Kong", time(9, 30)),
+_EXCHANGE_TZ_HOURS: Dict[str, Tuple[str, time, time]] = {
+    "US": ("America/New_York", time(9, 30), time(16, 0)),
+    "XETRA": ("Europe/Berlin", time(9, 0), time(17, 30)),
+    "DE": ("Europe/Berlin", time(9, 0), time(17, 30)),  # Frankfurt/Deutsche Börse
+    "F": ("Europe/Berlin", time(9, 0), time(17, 30)),    # Frankfurt suffix .F
+    "LSE": ("Europe/London", time(8, 0), time(16, 30)),
+    "L": ("Europe/London", time(8, 0), time(16, 30)),    # London alt suffix .L
+    "SIX": ("Europe/Zurich", time(9, 0), time(17, 30)),
+    "TSE": ("Asia/Tokyo", time(9, 0), time(15, 0)),
+    "T": ("Asia/Tokyo", time(9, 0), time(15, 0)),       # Tokyo alt suffix .T
+    "HK": ("Asia/Hong_Kong", time(9, 30), time(16, 0)),
 }
 
 def _symbol_suffix(sym: str) -> str:
@@ -40,14 +40,13 @@ def _zoneinfo_safe(name: str) -> ZoneInfo:
         # Fallback to UTC if tzdata isn't available
         return ZoneInfo("UTC")
 
-def _exchange_tz_and_start(sym: str) -> Tuple[ZoneInfo, time]:
+def _exchange_tz_and_hours(sym: str) -> Tuple[ZoneInfo, time, time]:
     suf = _symbol_suffix(sym)
-    entry = _EXCHANGE_TZ_START.get(suf) or _EXCHANGE_TZ_START.get(suf.upper())
+    entry = _EXCHANGE_TZ_HOURS.get(suf) or _EXCHANGE_TZ_HOURS.get(suf.upper())
     if not entry:
-        # try mapping like XETRA, US etc if full suffix given
-        entry = _EXCHANGE_TZ_START.get(suf.upper(), ("America/New_York", time(9,30)))
+        entry = _EXCHANGE_TZ_HOURS.get(suf.upper(), ("America/New_York", time(9, 30), time(16, 0)))
     tz = _zoneinfo_safe(entry[0])
-    return tz, entry[1]
+    return tz, entry[1], entry[2]
 
 _TZ_ABBR = {
     "America/New_York": "NY",
@@ -68,7 +67,7 @@ def classify_freshness(symbol: str, ts: datetime, flags: Dict[str, object] | Non
     """
     flags = flags or {}
     if bool(flags.get("eod") or flags.get("is_eod") or flags.get("delayed") or flags.get("is_delayed")):
-        tz, _ = _exchange_tz_and_start(symbol)
+        tz, _, _ = _exchange_tz_and_hours(symbol)
         abbr = _TZ_ABBR.get(str(tz.key), "") if hasattr(tz, "key") else ""
         label = (abbr + " EOD").strip()
         return "Previous close", "End of day price", label
@@ -76,13 +75,18 @@ def classify_freshness(symbol: str, ts: datetime, flags: Dict[str, object] | Non
     if ts.tzinfo is None:
         ts = ts.replace(tzinfo=timezone.utc)
 
-    tz, start = _exchange_tz_and_start(symbol)
+    tz, start, end = _exchange_tz_and_hours(symbol)
     now_local = datetime.now(tz)
     ts_local = ts.astimezone(tz)
 
-    if ts_local.date() == now_local.date() and now_local.time() >= start:
-        abbr = _TZ_ABBR.get(str(tz.key), "") if hasattr(tz, "key") else ""
-        tlabel = f"{abbr} {ts_local.strftime('%H:%M')}".strip()
-        return "Live", "During regular session", tlabel
     abbr = _TZ_ABBR.get(str(tz.key), "") if hasattr(tz, "key") else ""
+    # Same trading day
+    if ts_local.date() == now_local.date():
+        if start <= now_local.time() <= end:
+            tlabel = f"{abbr} {ts_local.strftime('%H:%M')}".strip()
+            return "Live", "During regular session", tlabel
+        # Outside session hours on same day
+        tlabel = f"{abbr} {ts_local.strftime('%H:%M')}".strip()
+        return "Market closed", "Outside regular session", tlabel
+    # Different day -> previous close
     return "Previous close", "Last trading day", (abbr + " EOD").strip()

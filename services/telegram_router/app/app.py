@@ -81,12 +81,15 @@ def deps() -> Tuple[Settings, Registry, Dict[str, Any], Dict[str, Any], SessionS
 async def send_telegram_message(token: str, chat_id: int, text: str, parse_mode: str = "MarkdownV2"):
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     async with httpx.AsyncClient(timeout=8.0) as client:
-        await client.post(url, json={
-            "chat_id": chat_id,
-            "text": text,
-            "parse_mode": parse_mode,
-            "disable_web_page_preview": True,
-        })
+        try:
+            await client.post(url, json={
+                "chat_id": chat_id,
+                "text": text,
+                "parse_mode": parse_mode,
+                "disable_web_page_preview": True,
+            })
+        except Exception as e:
+            json_log(action="send_telegram", status="error", error=str(e), chat_id=chat_id)
 
 
 def build_help_text(registry: Registry, copies: Dict[str, Any], ranking: Dict[str, Any]) -> str:
@@ -147,6 +150,10 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
 
     # handle /help
     if cmd == "/help":
+        # End any existing sticky session when a new root command arrives
+        existing = sessions.get(chat_id) or {}
+        if existing.get("sticky"):
+            sessions.clear(chat_id)
         return [build_help_text(registry, copies, ranking)]
 
     spec = registry.get(cmd)
