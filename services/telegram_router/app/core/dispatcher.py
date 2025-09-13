@@ -28,18 +28,25 @@ class Dispatcher:
                 symbols = payload.get("symbols") or []
                 if isinstance(symbols, str):
                     symbols = [symbols]
-                return await self.market_data.get_quotes(symbols=symbols)
+                try:
+                    return await self.market_data.get_quotes(symbols=symbols)
+                except Exception as e:
+                    return {"ok": False, "error": {"code": "UPSTREAM_ERROR", "message": str(e), "source": "market_data", "retriable": True}}
 
         # FX
         if service == "fx":
             if path == "/fx" and method == "GET":
                 base = (payload.get("base") or "").strip()
                 quote = (payload.get("quote") or "").strip()
-                if not base and not quote:
-                    # Default to last USD/EUR (no force refresh)
-                    return await self.fx.get_fx(base="USD", quote="EUR")
-                # Fallback defaults if one side missing
-                return await self.fx.get_fx(base=base or "USD", quote=quote or "EUR")
+                # Defaults
+                b = base or "USD"
+                q = quote or "EUR"
+                try:
+                    data = await self.fx.get_fx(base=b, quote=q)
+                    # Wrap raw FX payload in envelope for router flow
+                    return {"ok": True, "data": data}
+                except Exception as e:
+                    return {"ok": False, "error": {"code": "UPSTREAM_ERROR", "message": str(e), "source": "fx", "retriable": True}}
 
         # Portfolio core
         if service == "portfolio_core":
@@ -51,11 +58,13 @@ class Dispatcher:
             # Generic passthrough using HTTP client (until dedicated methods are added)
             base = self.portfolio.base
             url = f"{base}{path}"
-            if method == "GET":
-                return (await self.http.request("GET", url, params=payload)).json()
-            if method == "POST":
-                return (await self.http.request("POST", url, json=payload)).json()
+            try:
+                if method == "GET":
+                    return (await self.http.request("GET", url, params=payload)).json()
+                if method == "POST":
+                    return (await self.http.request("POST", url, json=payload)).json()
+            except Exception as e:
+                return {"ok": False, "error": {"code": "UPSTREAM_ERROR", "message": str(e), "source": "portfolio_core", "retriable": True}}
 
         # Unknown mapping
         return {"ok": False, "error": {"code": "unknown_dispatch", "message": f"No route for {service} {method} {path}"}}
-

@@ -25,6 +25,8 @@ def _normalize_quote_item(item: dict) -> dict:
         pct = round(((price_ccy / open_ccy) - 1.0) * 100.0, 2)
     base = {
         "symbol": sym,
+        # keep market if present upstream
+        **({"market": item.get("market")} if item.get("market") is not None else {}),
         "ccy": ccy,
         "price_ccy": price_ccy,
         "price_eur": price_eur,
