@@ -21,6 +21,30 @@ def escape_mdv2(s: str) -> str:
     return "".join(out)
 
 
+def escape_mdv2_preserving_code(s: str) -> str:
+    """Escape per MDV2, but preserve inline code spans delimited by single backticks.
+    Inside code spans, only escape backslash (\\) per spec.
+    """
+    out = []
+    in_code = False
+    for ch in s:
+        if ch == "`":
+            out.append("`")
+            in_code = not in_code
+            continue
+        if in_code:
+            if ch == "\\":
+                out.append("\\\\")
+            else:
+                out.append(ch)
+        else:
+            if ch in MDV2_ESCAPE_CHARS:
+                out.append("\\" + ch)
+            else:
+                out.append(ch)
+    return "".join(out)
+
+
 # Strict mode: escape a wider set, including '-' '.' and backslash
 STRICT_ESCAPE_CHARS = set("_[]()~`>#+-=|{}!.\\")
 
@@ -54,13 +78,24 @@ def mdv2_blockquote(lines: List[str], *, exclude_escape: set[str] | None = None)
     """
     exclude_escape = exclude_escape or set()
     def _esc(s: str) -> str:
-        # Escape per MDV2 but allow certain characters to remain unescaped
+        # Escape while preserving inline code segments, and optionally exclude some chars
         out = []
+        in_code = False
         for ch in s:
-            if ch in MDV2_ESCAPE_CHARS and ch not in exclude_escape:
-                out.append("\\" + ch)
+            if ch == "`":
+                out.append("`")
+                in_code = not in_code
+                continue
+            if in_code:
+                if ch == "\\":
+                    out.append("\\\\")
+                else:
+                    out.append(ch)
             else:
-                out.append(ch)
+                if ch in MDV2_ESCAPE_CHARS and (exclude_escape is None or ch not in exclude_escape):
+                    out.append("\\" + ch)
+                else:
+                    out.append(ch)
         return "".join(out)
     out = []
     for ln in lines:

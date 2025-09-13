@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-from ..core.templates import escape_mdv2, monotable, mdv2_blockquote, paginate
+from ..core.templates import escape_mdv2, escape_mdv2_preserving_code, monotable, mdv2_blockquote, paginate
 
 
 def _blank_line(buf: List[str]):
@@ -68,7 +68,7 @@ def render_blocks(blocks: List[Dict[str, Any]], *, data: Dict[str, Any] | None =
         if btype == "paragraph":
             text = _fmt(block.get("text", ""), data)
             if text:
-                out.append(escape_mdv2(text))
+                out.append(escape_mdv2_preserving_code(text))
             continue
 
         if btype == "pattern":
@@ -112,13 +112,13 @@ def render_blocks(blocks: List[Dict[str, Any]], *, data: Dict[str, Any] | None =
                     items = [items]
             for it in items:
                 itxt = _fmt(str(it), data)
-                out.append(f"• {escape_mdv2(itxt)}")
+                out.append(f"• {escape_mdv2_preserving_code(itxt)}")
             continue
 
         if btype == "footnote":
             text = _fmt(block.get("text", ""), data)
             _blank_line(out)
-            out.append(f"_{escape_mdv2(text)}_")
+            out.append(f"_{escape_mdv2_preserving_code(text)}_")
             _blank_line(out)
             continue
 
