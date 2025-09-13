@@ -17,7 +17,8 @@ def test_test_endpoint_sends_and_fx_format(client, monkeypatch, capture_telegram
     assert len(capture_telegram) == 1
     assert capture_telegram[0]["chat_id"] == 1001
     txt = capture_telegram[0]["text"].lower()
-    assert "eur/usd" in txt and ("1.1111" in txt or "1,1111" in txt)
+    # Accept plain or spec-escaped dot in MarkdownV2
+    assert "eur/usd" in txt and ("1.1111" in txt or "1,1111" in txt or "1\.1111" in txt)
 
 
 def test_owner_gate_denied(monkeypatch):
