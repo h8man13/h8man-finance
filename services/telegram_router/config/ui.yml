@@ -1,0 +1,215 @@
+snippets:
+  session_hint:
+    - footnote: "You can send more symbols now. This session auto-closes after {ttl_min} minute(s) of inactivity or when you run a new command."
+  provider_note_us:
+    - footnote: "When you are in Berlin but request .US, the provider may show US prices only during US market hours. This is a provider limitation."
+
+screens:
+  help:
+    blocks:
+      - header: "Commands"
+      - subheader: "Portfolio"
+      - bullets:
+          items:
+            - "`/portfolio`"
+            - "`/portfolio_snapshot d|w|m|y`"
+            - "`/portfolio_summary d|w|m|y`"
+            - "`/portfolio_breakdown d|w|m|y`"
+            - "`/portfolio_digest d|w|m|y`"
+            - "`/portfolio_movers d|w|m|y`"
+            - "`/allocation`"
+            - "`/allocation_edit [etf,stocks,crypto]`"
+            - "`/rename [symbol] [nickname]`"
+            - "`/tx [n]`"
+            - "`/cash`"
+            - "`/cash_add [amount]`"
+      - subheader: "Trading"
+      - bullets:
+          items:
+            - "`/buy [qty] [symbol] [price_ccy]`"
+            - "`/sell [qty] [symbol] [price_ccy]`"
+            - "`/add [qty] [symbol] [type]`"
+            - "`/remove [symbol]`"
+      - subheader: "Market"
+      - bullets:
+          items:
+            - "`/price [symbols...]`"
+            - "`/fx [base] [quote]`"
+      - subheader: "Other"
+      - bullets:
+          items:
+            - "`/cancel`"
+            - "`/exit`"
+      - footnote: "Tip: each command shows its input pattern in backticks, so you know exactly how to use it."
+
+  price_prompt:
+    blocks:
+      - header: "What symbols should I check?"
+      - bullets:
+          items:
+            - "Send 1 to 10 tickers separated by space."
+            - "Example: `/price nvda aapl`"
+            - "Default: `.us`. Add suffix for other markets, e.g. `.xetra`."
+      - include: session_hint
+
+  price_result:
+    blocks:
+      - table:
+          rows: "{table_rows}"
+      - include: provider_note_us
+
+  price_result_interactive:
+    blocks:
+      - table:
+          rows: "{table_rows}"
+      - include: provider_note_us
+      - include: session_hint
+
+  price_partial_error:
+    blocks:
+      - table:
+          rows: "{table_rows}"
+      - paragraph: "Some symbols were not found:"
+      - bullets:
+          items: "{not_found_symbols}"
+
+  price_partial_note:
+    blocks:
+      - table:
+          rows: "{table_rows}"
+      - paragraph: "Some symbols were not found."
+
+  price_partial_error_interactive:
+    blocks:
+      - table:
+          rows: "{table_rows}"
+      - paragraph: "Some symbols were not found:"
+      - bullets:
+          items: "{not_found_symbols}"
+      - include: provider_note_us
+      - include: session_hint
+
+  price_partial_note_interactive:
+    blocks:
+      - table:
+          rows: "{table_rows}"
+      - paragraph: "Some symbols were not found."
+      - include: provider_note_us
+      - include: session_hint
+
+  unknown_input:
+    blocks:
+      - paragraph: "Didn’t catch that. Try /help"
+
+  unknown_command:
+    blocks:
+      - paragraph: "Unknown command: `{cmd}`"
+      - paragraph: "Try /help"
+
+  invalid_template:
+    blocks:
+      - paragraph: "Hmm, that didn’t look right — {error}"
+      - paragraph: "Try: {usage}"
+      - paragraph: "Example: {example}"
+
+  service_error:
+    blocks:
+      - paragraph: "{message}"
+      - paragraph: "Try: {usage}"
+      - paragraph: "Example: {example}"
+
+  not_authorized:
+    blocks:
+      - paragraph: "Not authorized."
+
+  canceled:
+    blocks:
+      - paragraph: "Okay, closed."
+
+  done:
+    blocks:
+      - paragraph: "✅ Done"
+
+  buy_prompt:
+    blocks:
+      - header: "Use: [qty] [symbol] [price_ccy]"
+
+  sell_prompt:
+    blocks:
+      - header: "Use: [qty] [symbol] [price_ccy]"
+
+  add_prompt:
+    blocks:
+      - header: "Use: [qty] [symbol] [type]"
+
+  remove_prompt:
+    blocks:
+      - header: "Use: [symbol]"
+
+  cash_prompt:
+    blocks:
+      - header: "Use: /cash"
+
+  cash_add_prompt:
+    blocks:
+      - header: "Use: [amount]"
+
+  tx_prompt:
+    blocks:
+      - header: "Use: [n]"
+
+  portfolio_snapshot_prompt:
+    blocks:
+      - header: "Use: [period=d|w|m|y]"
+
+  portfolio_summary_prompt:
+    blocks:
+      - header: "Use: [period=d|w|m|y]"
+
+  portfolio_breakdown_prompt:
+    blocks:
+      - header: "Use: [period=d|w|m|y]"
+
+  portfolio_digest_prompt:
+    blocks:
+      - header: "Use: [period=d|w|m|y]"
+
+  portfolio_movers_prompt:
+    blocks:
+      - header: "Use: [period=d|w|m|y]"
+
+  allocation_prompt:
+    blocks:
+      - header: "Use: /allocation"
+
+  allocation_edit_prompt:
+    blocks:
+      - header: "Use: [etf,stocks,crypto]"
+
+  po_if_prompt:
+    blocks:
+      - header: "Use: [scope] [+x%|-x%]"
+
+  rename_prompt:
+    blocks:
+      - header: "Use: [symbol] [nickname]"
+
+  buy_success:
+    blocks:
+      - paragraph: "buy: *{symbol}* ×{qty} @ {price_ccy}"
+
+  sell_success:
+    blocks:
+      - paragraph: "sell: *{symbol}* ×{qty} @ {price_ccy}"
+
+
+  fx_prompt:
+    blocks:
+      - header: "Use: [base] [quote]"
+      - bullets:
+          items:
+            - "Example: `/fx usd eur`"
+            - "Default: usd eur. Live rate; display rounded to 4 decimals."
+  fx_result:
+    blocks:
+      - paragraph: "{base}/{quote}: {rate}"

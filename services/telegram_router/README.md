@@ -4,7 +4,7 @@ A FastAPI service that bridges Telegram to your internal microservices. It handl
 
 ## Features
 - Webhook (Cloudflare) or long‑polling (dev)
-- File‑driven configuration: commands, copies, help ranking
+- File‑driven configuration: commands and UI screens
 - Conversational UX with partial arguments and `/cancel`
 - Idempotency per chat/update
 - Owner gating via `ROUTER_OWNER_IDS`
@@ -32,8 +32,7 @@ services/telegram_router/
       fx.py               # fx client
   config/
     commands.json         # registry (names, aliases, args schemas, dispatch)
-    router_copies.yaml    # UX copies/templates
-    help_ranking.yaml     # /help sections & order
+    ui.yml                # UI screens/snippets for prompts, results, errors
   data/                   # sessions, idempotency (mounted writable)
   Dockerfile
   requirements.txt
@@ -46,7 +45,7 @@ Copy `.env.example` → `.env` and set values (keep out of git):
 - `TELEGRAM_WEBHOOK_SECRET`: 64‑char secret (for webhook header)
 - `TELEGRAM_MODE`: `webhook` or `polling`
 - `ROUTER_OWNER_IDS`: comma‑separated Telegram user IDs
-- `REGISTRY_PATH`, `COPIES_PATH`, `RANKING_PATH`: point to mounted `/config` files
+- `REGISTRY_PATH`, `UI_PATH`: point to mounted `/config` files
 - Upstreams: `MARKET_DATA_URL`, `PORTFOLIO_CORE_URL`, `FX_URL`
 
 ## Run (local)
@@ -77,7 +76,7 @@ curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
 ## Message formatting (MarkdownV2)
 - All replies use `parse_mode=MarkdownV2`
 - Escape special chars: `_ * [ ] ( ) ~ ` + - = | { } . ! > #`
-- Use templates in `router_copies.yaml` to keep strings out of code
+- UI is defined in `ui.yml`; keep strings out of code
 - Router auto‑paginates replies >4096 chars
 - Quotes (`/price`) render as a compact monospaced table for readability.
 

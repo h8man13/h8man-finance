@@ -7,7 +7,7 @@ from babel.numbers import format_currency
 
 
 # Telegram MarkdownV2 escaping:
-# Keep '.' and '-' unescaped for readability, escape the rest per spec.
+# Non-strict mode: keep '.' and '-' unescaped for readability.
 MDV2_ESCAPE_CHARS = set("_*[]()~`>#+=|{}!")
 
 
@@ -21,7 +21,8 @@ def escape_mdv2(s: str) -> str:
     return "".join(out)
 
 
-STRICT_ESCAPE_CHARS = set("_[]()~`>#+-=|{}!.\\")  # strict mode, includes backslash and dot
+# Strict mode: escape a wider set, including '-' '.' and backslash
+STRICT_ESCAPE_CHARS = set("_[]()~`>#+-=|{}!.\\")
 
 
 def escape_mdv2_strict(s: str) -> str:

@@ -27,7 +27,7 @@ def test_owner_gate_denied(monkeypatch):
     from app.app import deps  # type: ignore
 
     ctx = deps()
-    s, registry, copies, ranking, sessions, idemp, dispatcher, http = ctx
+    s, registry, sessions, idemp, dispatcher, http = ctx
     
     # Ensure no owner contains 999
     assert 999 not in s.owner_ids
@@ -51,7 +51,7 @@ def test_session_flow_buy_prompt_and_merge(monkeypatch):
     from app.app import deps  # type: ignore
 
     ctx = deps()
-    s, registry, copies, ranking, sessions, idemp, dispatcher, http = ctx
+    s, registry, sessions, idemp, dispatcher, http = ctx
 
     # Make dispatcher succeed for buy
     async def _fake_dispatch(spec, args):
@@ -75,7 +75,7 @@ def test_price_table_output(monkeypatch):
     from app.app import deps  # type: ignore
 
     ctx = deps()
-    s, registry, copies, ranking, sessions, idemp, dispatcher, http = ctx
+    s, registry, sessions, idemp, dispatcher, http = ctx
 
     # Mock quotes from market data
     async def _fake_dispatch(spec, args):
@@ -96,8 +96,8 @@ def test_price_table_output(monkeypatch):
     out = appmod.asyncio.run(appmod.process_text(chat_id=3001, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/price aapl bmw.de", ctx=ctx))
     assert out and out[0]
     txt = out[0]
-    # Should render a monospaced table surrounded by ``` and include the symbols
-    assert txt.startswith("```") and txt.endswith("```")
+    # Should render a monospaced table starting with ``` and include the symbols
+    assert txt.startswith("```")
     assert "AAPL" in txt and "BMW" in txt
 
 
@@ -106,7 +106,7 @@ def test_price_interactive_flow_with_footnote(monkeypatch):
     from app.app import deps  # type: ignore
 
     ctx = deps()
-    s, registry, copies, ranking, sessions, idemp, dispatcher, http = ctx
+    s, registry, sessions, idemp, dispatcher, http = ctx
 
     # 1) Start interactive with no symbols
     out1 = appmod.asyncio.run(appmod.process_text(chat_id=3101, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/price", ctx=ctx))
@@ -140,7 +140,7 @@ def test_price_one_shot_no_interactive_hint(monkeypatch):
     from app.app import deps  # type: ignore
 
     ctx = deps()
-    s, registry, copies, ranking, sessions, idemp, dispatcher, http = ctx
+    s, registry, sessions, idemp, dispatcher, http = ctx
 
     async def _fake_dispatch(spec, args):
         if spec.get("service") == "market_data":
@@ -166,7 +166,7 @@ def test_price_prompt_has_footnote(monkeypatch):
     from app.app import deps  # type: ignore
 
     ctx = deps()
-    s, registry, copies, ranking, sessions, idemp, dispatcher, http = ctx
+    s, registry, sessions, idemp, dispatcher, http = ctx
 
     out = appmod.asyncio.run(appmod.process_text(chat_id=3301, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/price", ctx=ctx))
     assert out and out[0]
@@ -180,7 +180,7 @@ def test_fx_default_no_args(monkeypatch):
     from app.app import deps  # type: ignore
 
     ctx = deps()
-    s, registry, copies, ranking, sessions, idemp, dispatcher, http = ctx
+    s, registry, sessions, idemp, dispatcher, http = ctx
 
     async def _fake_dispatch(spec, args):
         if spec.get("service") == "fx":

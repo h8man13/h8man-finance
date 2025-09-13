@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     REGISTRY_PATH: str = "/config/commands.json"
     COPIES_PATH: str = "/config/router_copies.yaml"
     RANKING_PATH: str = "/config/help_ranking.yaml"
+    UI_PATH: str = "/config/ui.yml"
 
     # Upstreams
     MARKET_DATA_URL: str = "http://market_data:8000"

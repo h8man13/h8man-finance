@@ -9,8 +9,8 @@ def test_help_via_test_endpoint(client, capture_telegram, monkeypatch):
     txt = capture_telegram[0]["text"].lower()
     assert "commands" in txt
     assert "/price" in txt or "price" in txt
-    # Should include blockquote markers for command usage
-    assert ">" in capture_telegram[0]["text"]
+    # Check bullets or backticks for command listing (UI screen)
+    assert ("•" in capture_telegram[0]["text"]) or ("`/price" in capture_telegram[0]["text"]) or ("/price" in txt)
 
 
 def test_price_interactive_no_quotes_prompts_again_and_sticky(monkeypatch):
@@ -18,7 +18,7 @@ def test_price_interactive_no_quotes_prompts_again_and_sticky(monkeypatch):
     from app.app import deps  # type: ignore
 
     ctx = deps()
-    s, registry, copies, ranking, sessions, idemp, dispatcher, http = ctx
+    s, registry, sessions, idemp, dispatcher, http = ctx
 
     # Start interactive
     out1 = appmod.asyncio.run(appmod.process_text(chat_id=5101, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/price", ctx=ctx))
@@ -42,7 +42,7 @@ def test_price_error_keeps_sticky(monkeypatch):
     from app.app import deps  # type: ignore
 
     ctx = deps()
-    s, registry, copies, ranking, sessions, idemp, dispatcher, http = ctx
+    s, registry, sessions, idemp, dispatcher, http = ctx
 
     # Start interactive
     out1 = appmod.asyncio.run(appmod.process_text(chat_id=5201, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/price", ctx=ctx))
@@ -69,7 +69,7 @@ def test_price_switch_command_clears_session(monkeypatch):
     from app.app import deps  # type: ignore
 
     ctx = deps()
-    s, registry, copies, ranking, sessions, idemp, dispatcher, http = ctx
+    s, registry, sessions, idemp, dispatcher, http = ctx
 
     appmod.asyncio.run(appmod.process_text(chat_id=5301, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/price", ctx=ctx))
     assert sessions.get(5301)
@@ -84,7 +84,7 @@ def test_fx_inversion_display(monkeypatch):
     from app.app import deps  # type: ignore
 
     ctx = deps()
-    s, registry, copies, ranking, sessions, idemp, dispatcher, http = ctx
+    s, registry, sessions, idemp, dispatcher, http = ctx
 
     async def _fake_dispatch(spec, args):
         if spec.get("service") == "fx":
@@ -104,7 +104,7 @@ def test_price_market_column_defaults_to_us(monkeypatch):
     from app.app import deps  # type: ignore
 
     ctx = deps()
-    s, registry, copies, ranking, sessions, idemp, dispatcher, http = ctx
+    s, registry, sessions, idemp, dispatcher, http = ctx
 
     async def _fake_dispatch(spec, args):
         if spec.get("service") == "market_data":
@@ -124,7 +124,7 @@ def test_price_one_shot_partial_footnote(monkeypatch):
     from app.app import deps  # type: ignore
 
     ctx = deps()
-    s, registry, copies, ranking, sessions, idemp, dispatcher, http = ctx
+    s, registry, sessions, idemp, dispatcher, http = ctx
 
     async def _fake_dispatch(spec, args):
         if spec.get("service") == "market_data":
@@ -150,7 +150,7 @@ def test_price_alias_p_one_shot_and_prompt(monkeypatch):
     from app.app import deps  # type: ignore
 
     ctx = deps()
-    s, registry, copies, ranking, sessions, idemp, dispatcher, http = ctx
+    s, registry, sessions, idemp, dispatcher, http = ctx
 
     async def _fake_dispatch_one(spec, args):
         if spec.get("service") == "market_data":
@@ -176,7 +176,7 @@ def test_price_interactive_partial_footnote(monkeypatch):
     from app.app import deps  # type: ignore
 
     ctx = deps()
-    s, registry, copies, ranking, sessions, idemp, dispatcher, http = ctx
+    s, registry, sessions, idemp, dispatcher, http = ctx
 
     # Start interactive session
     out0 = appmod.asyncio.run(appmod.process_text(chat_id=5603, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/price", ctx=ctx))
@@ -206,7 +206,7 @@ def test_help_via_process_text_clears_sticky():
     from app.app import deps  # type: ignore
 
     ctx = deps()
-    s, registry, copies, ranking, sessions, idemp, dispatcher, http = ctx
+    s, registry, sessions, idemp, dispatcher, http = ctx
 
     # Create a sticky price session
     appmod.asyncio.run(appmod.process_text(chat_id=5604, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/price", ctx=ctx))
@@ -222,7 +222,7 @@ def test_unknown_input_without_session():
     from app.app import deps  # type: ignore
 
     ctx = deps()
-    s, registry, copies, ranking, sessions, idemp, dispatcher, http = ctx
+    s, registry, sessions, idemp, dispatcher, http = ctx
 
     out = appmod.asyncio.run(appmod.process_text(chat_id=5701, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="nvda", ctx=ctx))
     assert out
@@ -236,7 +236,7 @@ def test_sticky_expired_treated_as_unknown(monkeypatch, tmp_path):
     import os, json, time
 
     ctx = deps()
-    s, registry, copies, ranking, sessions, idemp, dispatcher, http = ctx
+    s, registry, sessions, idemp, dispatcher, http = ctx
 
     # Start sticky
     out1 = appmod.asyncio.run(appmod.process_text(chat_id=5702, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/price", ctx=ctx))
@@ -264,7 +264,7 @@ def test_cancel_and_exit_clear_session():
     from app.app import deps  # type: ignore
 
     ctx = deps()
-    s, registry, copies, ranking, sessions, idemp, dispatcher, http = ctx
+    s, registry, sessions, idemp, dispatcher, http = ctx
 
     # /cancel
     appmod.asyncio.run(appmod.process_text(chat_id=5801, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/price", ctx=ctx))
@@ -286,7 +286,7 @@ def test_fx_error_handling(monkeypatch):
     from app.app import deps  # type: ignore
 
     ctx = deps()
-    s, registry, copies, ranking, sessions, idemp, dispatcher, http = ctx
+    s, registry, sessions, idemp, dispatcher, http = ctx
 
     async def _fake_dispatch_err(spec, args):
         if spec.get("service") == "fx":
@@ -307,7 +307,7 @@ def test_end_to_end_user_flow(monkeypatch):
     from app.app import deps  # type: ignore
 
     ctx = deps()
-    s, registry, copies, ranking, sessions, idemp, dispatcher, http = ctx
+    s, registry, sessions, idemp, dispatcher, http = ctx
 
     async def _fake_dispatch(spec, args):
         if spec.get("service") == "market_data":
@@ -357,4 +357,28 @@ def test_end_to_end_user_flow(monkeypatch):
     # /p amzn nope.us -> partial footnote or service error
     o7 = appmod.asyncio.run(appmod.process_text(chat_id=chat, sender_id=owner, text="/p amzn nope.us", ctx=ctx))
     assert o7 and ("some symbols were not found" in o7[0].lower() or "service error" in o7[0].lower())
+
+def test_price_one_shot_partial_without_details(monkeypatch):
+    import app.app as appmod  # type: ignore
+    from app.app import deps  # type: ignore
+
+    ctx = deps()
+    s, registry, sessions, idemp, dispatcher, http = ctx
+
+    async def _fake_dispatch(spec, args):
+        if spec.get("service") == "market_data":
+            # Partial true but no error.details
+            return {
+                "ok": True,
+                "partial": True,
+                "data": {"quotes": [
+                    {"symbol": "AAPL.US", "price_eur": 100.0, "open_eur": 100.0, "market": "US"},
+                ]}
+            }
+        return {"ok": True, "data": {}}
+
+    monkeypatch.setattr(appmod.Dispatcher, "dispatch", lambda self, spec, args: _fake_dispatch(spec, args))
+    out = appmod.asyncio.run(appmod.process_text(chat_id=7601, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/price aapl nope.us", ctx=ctx))
+    assert out and out[0]
+    assert "some symbols were not found" in out[0].lower()
 

@@ -8,7 +8,6 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
-import yaml
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request
 from contextlib import asynccontextmanager
 from fastapi.responses import JSONResponse
@@ -21,8 +20,9 @@ from .core.validator import validate_args
 from .core.sessions import SessionStore
 from .core.idempotency import IdempotencyStore
 from .core.dispatcher import Dispatcher
-from .core.templates import escape_mdv2, paginate, euro, monotable, safe_escape_mdv2_with_fences, convert_markdown_to_html, mdv2_blockquote, mdv2_expandable_blockquote, render_blocks
+from .core.templates import escape_mdv2, paginate, euro, monotable, safe_escape_mdv2_with_fences, convert_markdown_to_html, mdv2_blockquote, mdv2_expandable_blockquote
 from .connectors.http import HTTPClient
+from .ui.loader import load_ui, render_screen
 
 
 @asynccontextmanager
@@ -32,6 +32,11 @@ async def lifespan(app: FastAPI):
     # ensure data dirs
     os.makedirs(os.path.dirname(s.IDEMPOTENCY_PATH), exist_ok=True)
     os.makedirs(s.SESSIONS_DIR, exist_ok=True)
+    # Warm UI cache (load once if present)
+    try:
+        _ = load_ui(s.UI_PATH)
+    except Exception:
+        pass
     # optional polling loop
     poll_task = None
     if s.TELEGRAM_MODE == "polling" and s.TELEGRAM_BOT_TOKEN:
@@ -58,45 +63,20 @@ def json_log(**kwargs):
     print(json.dumps(kwargs, ensure_ascii=False))
 
 
-def load_yaml(path: str) -> Dict[str, Any]:
-    with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
-
-
-def _render_prompt(data) -> str:
-    """Render a prompt from copies.prompts.* supporting either:
-    - string (multi-line): 1st line header + blockquoted rest
-    - blocks (list[dict]): rendered via render_blocks
-    """
-    if not data:
-        return ""
-    # Structured blocks
-    if isinstance(data, list):
-        return render_blocks(data)
-    # Fallback: multi-line string
-    text = str(data)
-    lines = [ln.rstrip() for ln in text.splitlines()]
-    head = lines[0] if lines else ""
-    rest = [ln for ln in lines[1:] if ln.strip()]
-    msg = escape_mdv2(head)
-    if rest:
-        msg = f"{msg}\n\n" + mdv2_blockquote(rest)
-    return msg
+# UI (ui.yml) is the single source of truth for rendering.
 
 
 # startup handled by lifespan
 
 
-def deps() -> Tuple[Settings, Registry, Dict[str, Any], Dict[str, Any], SessionStore, IdempotencyStore, Dispatcher, HTTPClient]:
+def deps() -> Tuple[Settings, Registry, SessionStore, IdempotencyStore, Dispatcher, HTTPClient]:
     s = get_settings()
     registry = Registry(s.REGISTRY_PATH)
-    copies = load_yaml(s.COPIES_PATH)
-    ranking = load_yaml(s.RANKING_PATH)
     sessions = SessionStore(s.SESSIONS_DIR, ttl_sec=s.ROUTER_SESSION_TTL_SEC)
     idemp = IdempotencyStore(s.IDEMPOTENCY_PATH)
     http = HTTPClient(timeout=s.HTTP_TIMEOUT_SEC, retries=s.HTTP_RETRIES)
     dispatch = Dispatcher(http)
-    return s, registry, copies, ranking, sessions, idemp, dispatch, http
+    return s, registry, sessions, idemp, dispatch, http
 
 
 async def send_telegram_message(token: str, chat_id: int, text: str, parse_mode: str = "MarkdownV2"):
@@ -165,56 +145,18 @@ async def send_telegram_message(token: str, chat_id: int, text: str, parse_mode:
             json_log(action="send_telegram", status="exception", error=str(e), chat_id=chat_id)
 
 
-def build_help_text(registry: Registry, copies: Dict[str, Any], ranking: Dict[str, Any]) -> str:
-    # Main header from copies, but format as bold+underline per spec
-    raw_header = copies.get("generic", {}).get("header_help", "Commands")
-    # Strip common MDV2 markers if present in copies
-    for ch in "*_":
-        raw_header = raw_header.replace(ch, "")
-    lines: List[str] = [f"*__{escape_mdv2(raw_header.strip())}__*"]
-
-    by_name = {c.name: c for c in registry.all()}
-    used = set()
-
-    def _render_cmd(c) -> List[str]:
-        usage = c.help.get("usage", "")
-        example = c.help.get("example", "")
-        head = f"{c.name} {usage}".strip()
-        bq_lines = [head]
-        if example:
-            bq_lines.append(f"Example: {example}")
-        return [mdv2_blockquote(bq_lines)]
-
-    # Ranked sections
-    for sec in ranking.get("sections", []):
-        title = (sec.get("title", "") or "").strip()
-        cmds = sec.get("commands", [])
-        if title:
-            lines.append(f"\n*__{escape_mdv2(title)}__*")
-        for name in cmds:
-            c = by_name.get(name)
-            if not c:
-                continue
-            lines.extend(_render_cmd(c))
-            used.add(name)
-
-    # Other commands sorted alpha
-    remaining = [c for c in registry.all() if c.name not in used]
-    remaining.sort(key=lambda c: c.name)
-    if remaining:
-        other_hdr = copies.get("generic", {}).get("other_header", "Other")
-        lines.append(f"\n*__{escape_mdv2(other_hdr)}__*")
-    for c in remaining:
-        lines.extend(_render_cmd(c))
-
-    return "\n".join([ln for ln in lines if ln is not None])
+# Legacy help builder removed; /help is rendered via UI screens.
 
 
 async def process_text(chat_id: int, sender_id: int, text: str, ctx):
-    s, registry, copies, ranking, sessions, idemp, dispatcher, http = ctx
+    s, registry, sessions, idemp, dispatcher, http = ctx
+    ui = load_ui(get_settings().UI_PATH)
+    if not ui:
+        raise HTTPException(status_code=500, detail="UI config missing")
     # owner gate (only if configured)
     if s.owner_ids and sender_id not in s.owner_ids:
-        return [escape_mdv2(copies.get("generic", {}).get("not_authorized", "Not authorized."))]
+        pages = render_screen(ui, "not_authorized", {})
+        return [p for p in pages]
 
     # parse
     cmd, tokens = parse_text(text)
@@ -222,23 +164,22 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
         # If ongoing session, treat as input-only
         session = sessions.get(chat_id)
         if not session:
-            # Structured unknown input with a hint
-            header = copies.get("generic", {}).get("unknown_input", "Unknown input.")
-            txt = escape_mdv2(header)
-            txt = f"{txt}\n\n" + mdv2_blockquote(["Try: /help"])
-            return [txt]
+            pages = render_screen(ui, "unknown_input", {})
+            return [p for p in pages]
         cmd = session.get("cmd")
         tokens = [t for t in tokens if t]
 
     # handle /cancel
     if cmd == "/cancel":
         sessions.clear(chat_id)
-        return [escape_mdv2(copies.get("generic", {}).get("canceled", "Canceled."))]
+        pages = render_screen(ui, "canceled", {})
+        return [p for p in pages]
 
     # handle /exit (alias for closing any sticky session)
     if cmd == "/exit":
         sessions.clear(chat_id)
-        return [escape_mdv2(copies.get("generic", {}).get("canceled", "Canceled."))]
+        pages = render_screen(ui, "canceled", {})
+        return [p for p in pages]
 
     # handle /help
     if cmd == "/help":
@@ -246,16 +187,15 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
         existing = sessions.get(chat_id) or {}
         if existing.get("sticky"):
             sessions.clear(chat_id)
-        return [build_help_text(registry, copies, ranking)]
+        # Prefer ui.yml help screen, fallback to dynamic builder
+        pages = render_screen(ui, "help", {})
+        return [p for p in pages]
 
     spec = registry.get(cmd)
     if not spec:
-        # Highlight unknown command with a hint
-        tmpl = copies.get("generic", {}).get("unknown_command", "Unknown command: {cmd}")
-        header = tmpl.format(cmd=cmd)
-        txt = escape_mdv2(header)
-        txt = f"{txt}\n\n" + mdv2_blockquote(["Try: /help"])
-        return [txt]
+        # Unknown command via UI, fallback minimal
+        pages = render_screen(ui, "unknown_command", {"cmd": cmd})
+        return [p for p in pages]
 
     # If switching away from a sticky session to a different command, clear it
     existing = sessions.get(chat_id) or {}
@@ -267,20 +207,10 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
 
     values, missing, err = validate_args(spec.args_schema, tokens, got=got, cmd_name=spec.name)
     if err:
-        tpl = copies.get("generic", {}).get("invalid_template", "Invalid\nTry: {usage}\nExample: {example}")
         usage = spec.help.get("usage", "")
         example = spec.help.get("example", "")
-        rendered = tpl.format(error=err, usage=usage, example=example)
-        parts = rendered.split("\n")
-        header = parts[0]
-        bq_lines: List[str] = []
-        for line in parts[1:]:
-            if line.strip():
-                bq_lines.append(line)
-        text = escape_mdv2(header)
-        if bq_lines:
-            text = f"{text}\n\n" + mdv2_blockquote(bq_lines)
-        return [text]
+        pages = render_screen(ui, "invalid_template", {"error": err, "usage": usage, "example": example})
+        return [p for p in pages]
     if missing:
         # For /price, start a sticky session so user can keep sending symbols
         sticky = (spec.name == "/price")
@@ -292,40 +222,13 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
             "missing_from": missing,
             "sticky": sticky,
         })
-        # Prefer per-command blocks, then prompts.*, otherwise fall back
+        # Prefer UI screens first; otherwise minimal fallback
         msg = None
-        cmd_cfg = copies.get(spec.name, {}) or {}
-        if isinstance(cmd_cfg.get("prompt_blocks"), list):
-            msg = _render_prompt(cmd_cfg.get("prompt_blocks"))
-        if msg is None and spec.name == "/price":
-            prompts_cfg = (copies.get("prompts", {}) or {})
-            prompt_blocks = prompts_cfg.get("ask_symbols_price_blocks")
-            if isinstance(prompt_blocks, list):
-                msg = _render_prompt(prompt_blocks)
-            else:
-                prompt = prompts_cfg.get("ask_symbols_price")
-                if prompt:
-                    msg = _render_prompt(prompt)
-        if not msg:
-            usage = spec.help.get("usage", "")
-            example = spec.help.get("example", "")
-            tpl = copies.get(spec.name, {}).get("prompt_usage") or copies.get("generic", {}).get("missing_template", "Use: {usage}\nMissing: {missing}\nTry: {usage}\nExample: {example}")
-            rendered = tpl.format(usage=usage, missing=", ".join(missing), example=example)
-            parts = rendered.split("\n")
-            header = parts[0]
-            bq_lines: List[str] = []
-            for line in parts[1:]:
-                if line.strip():
-                    bq_lines.append(line)
-            msg = escape_mdv2(header)
-            if bq_lines:
-                msg = f"{msg}\n\n" + mdv2_blockquote(bq_lines)
-        # In interactive /price mode, add sticky footnote with TTL
-        if sticky:
-            ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
-            hint = f"You can send more symbols now. This session auto-closes after {ttl_min} minute(s) of inactivity or when you run a new command."
-            msg = f"{msg}\n\n{escape_mdv2(hint)}"
-        return [msg]
+        # UI generic command prompt mapping: /cmd -> cmd_prompt
+        screen_key = spec.name.lstrip("/") + "_prompt"
+        ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
+        pages = render_screen(ui, screen_key, {"ttl_min": ttl_min})
+        return [p for p in pages]
 
     # ready to dispatch
     # For sticky /price sessions, keep the session alive after each success
@@ -335,14 +238,11 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
     resp = await dispatcher.dispatch(spec.dispatch, values)
     if not isinstance(resp, dict) or not resp.get("ok", False):
         err = (resp or {}).get("error", {})
-        message = err.get("message", "Service error")
-        # Add usage + example to help recover from errors
+        message = err.get("message") or "Internal error"
         usage = spec.help.get("usage", "")
         example = spec.help.get("example", "")
-        if usage or example:
-            message = f"{message}\nTry: {usage}\nExample: {example}".strip()
-        prefix = copies.get("generic", {}).get("error_prefix", "�?-")
-        return [escape_mdv2(f"{prefix} {message}")]
+        pages = render_screen(ui, "service_error", {"message": message, "usage": usage, "example": example})
+        return [p for p in pages]
 
     # success mapping by command
     if spec.name == "/price":
@@ -359,27 +259,19 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
                 "missing_from": [],
                 "sticky": True,
             })
-            # Prefer per-command blocks, then prompts.*, otherwise fall back
-            cmd_cfg = copies.get("/price", {}) or {}
-            if isinstance(cmd_cfg.get("prompt_blocks"), list):
-                msg = _render_prompt(cmd_cfg.get("prompt_blocks"))
-                return [msg]
-            prompts_cfg = (copies.get("prompts", {}) or {})
-            prompt_blocks = prompts_cfg.get("ask_symbols_price_blocks")
-            if isinstance(prompt_blocks, list):
-                msg = _render_prompt(prompt_blocks)
-                return [msg]
-            prompt = prompts_cfg.get("ask_symbols_price")
-            if prompt:
-                msg = _render_prompt(prompt)
-                return [msg]
+            # Prefer UI screens, then per-command blocks, then prompts.*, otherwise fall back
+            ui = load_ui(get_settings().UI_PATH)
+            if ui:
+                ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
+                pages = render_screen(ui, "price_prompt", {"ttl_min": ttl_min})
+                if pages:
+                    return [p for p in pages]
             usage = spec.help.get("usage", "")
             example = spec.help.get("example", "")
-            tpl = copies.get(spec.name, {}).get("prompt_usage") or copies.get("generic", {}).get("missing_template", "Use: {usage}\nMissing: {missing}")
-            msg = tpl.format(usage=usage, missing="symbols", example=example)
+            msg = f"Use: {usage}"
             return [escape_mdv2(msg)]
 
-        # Tabular view for clean readability
+        # Build rows for table
         rows: List[List[str]] = [["SYMBOL", "NOW", "OPEN", "%", "MARKET", "FRESHNESS"]]
         for q in quotes:
             sym = str(q.get("symbol") or "").upper()
@@ -403,7 +295,20 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
             ftime = str(q.get("fresh_time") or "").strip()
             fcol = f"{freshness} ({ftime})".strip() if ftime else freshness
             rows.append([f"{disp}{star}", n_txt, o_txt, pct_txt, market_col, fcol])
-        text = monotable(rows) if rows else escape_mdv2("No quotes")
+        # Choose UI screen
+        partial = bool(resp.get("partial"))
+        details = resp.get("error", {}).get("details", {}) if isinstance(resp.get("error"), dict) else {}
+        failed = details.get("symbols_failed") or []
+        data_ui = {"table_rows": rows, "not_found_symbols": failed}
+        if partial and isinstance(failed, list) and failed:
+            pages = render_screen(ui, "price_partial_error", data_ui)
+        elif partial:
+            p = render_screen(ui, "price_result", data_ui)[0]
+            p = f"{p}\n\n" + mdv2_blockquote(["Some symbols were not found."])
+            pages = [p]
+        else:
+            pages = render_screen(ui, "price_result", data_ui)
+        text = pages[0]
         # Refresh sticky session TTL if applicable
         if not clear_after:
             sessions.set(chat_id, {
@@ -416,27 +321,34 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
             })
         else:
             sessions.clear(chat_id)
-        # Common footnotes (partial failures) in all modes -> use blockquote
+        # Common footnotes (partial failures) if we didn't already render a partial-error screen
         footnotes_common_str = ""
-        if resp.get("partial") or (isinstance(resp.get("error"), dict) and resp.get("error", {}).get("details")):
-            details = resp.get("error", {}).get("details", {}) if isinstance(resp.get("error"), dict) else {}
-            failed = details.get("symbols_failed") or []
-            if failed:
-                head = "Some symbols were not found:"
-                body = [" ".join(failed)] if isinstance(failed, list) else [str(failed)]
-                footnotes_common_str = mdv2_expandable_blockquote([head], body)
+        if not (ui and partial and isinstance(failed, list) and failed):
+            if resp.get("partial") or (isinstance(resp.get("error"), dict) and resp.get("error", {}).get("details")):
+                details = resp.get("error", {}).get("details", {}) if isinstance(resp.get("error"), dict) else {}
+                failed2 = details.get("symbols_failed") or []
+                # Use copies for message text, avoid hard-coded strings
+                msg_nf = "Some symbols were not found."
+                if failed2:
+                    head = msg_nf
+                    body = [" ".join(failed2)] if isinstance(failed2, list) else [str(failed2)]
+                    footnotes_common_str = mdv2_expandable_blockquote([head], body)
+                else:
+                    # Partial without explicit details: still inform the user
+                    footnotes_common_str = mdv2_blockquote([msg_nf])
 
         # Footnotes only in interactive mode (sticky)
         if not clear_after:
-            # Provider-hour caveat and sticky hint from copies
+            # Re-render interactive variants via UI
             ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
-            caveat = copies.get("/price", {}).get("caveat") or "Note: Provider limitations may apply."
-            hint_tpl = copies.get("/price", {}).get("sticky_hint") or "You can send more symbols now. This session auto-closes after {ttl_min} minute(s) of inactivity or when you run a new command."
-            hint = hint_tpl.format(ttl_min=ttl_min)
-            blk1 = mdv2_blockquote([caveat])
-            blk2 = mdv2_blockquote([hint])
-            foot = "\n\n".join([blk1, blk2] + ([footnotes_common_str] if footnotes_common_str else []))
-            text = f"{text}\n\n{foot}"
+            data_ui = {"table_rows": rows, "not_found_symbols": failed, "ttl_min": ttl_min}
+            if partial and isinstance(failed, list) and failed:
+                pages2 = render_screen(ui, "price_partial_error_interactive", data_ui)
+            elif partial:
+                pages2 = render_screen(ui, "price_partial_note_interactive", data_ui)
+            else:
+                pages2 = render_screen(ui, "price_result_interactive", data_ui)
+            text = pages2[0]
         elif footnotes_common_str:
             text = f"{text}\n\n{footnotes_common_str}"
         return [text]
@@ -455,7 +367,6 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
             rnum = None
         if pair == "USD_EUR" and base == "EUR" and quote == "USD" and rnum and rnum != 0.0:
             rate_disp = 1.0 / rnum
-        tpl = copies.get("/fx", {}).get("success", "{base}/{quote}: {rate}")
         # Clear session by default for /fx (stateless)
         sessions.clear(chat_id)
         # Display: round to 4 decimals for communication purposes,
@@ -464,24 +375,21 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
             rate_str = f"{float(rate_disp):.4f}"
         except Exception:
             rate_str = str(rate_disp)
-        return [escape_mdv2(tpl.format(base=base, quote=quote, rate=rate_str))]
+        pages = render_screen(ui, "fx_result", {"base": base, "quote": quote, "rate": rate_str})
+        return [p for p in pages]
     if spec.name in ("/buy", "/sell"):
-        tpl = copies.get(spec.name, {}).get("success")
-        if tpl:
-            msg = tpl.format(**values)
-            sessions.clear(chat_id)
-            return [escape_mdv2(msg)]
-        else:
-            sessions.clear(chat_id)
-            return [escape_mdv2("Done.")]
+        key = "buy_success" if spec.name == "/buy" else "sell_success"
+        pages = render_screen(ui, key, values)
+        sessions.clear(chat_id)
+        return [p for p in pages]
 
     # default success
-    done = copies.get("generic", {}).get("done", "Done.")
-    return [escape_mdv2(done)]
+    pages = render_screen(ui, "done", {})
+    return [p for p in pages]
 
 
 async def _poll_updates():
-    s, registry, copies, ranking, sessions, idemp, dispatcher, http = deps()
+    s, registry, sessions, idemp, dispatcher, http = deps()
     token = s.TELEGRAM_BOT_TOKEN
     base = f"https://api.telegram.org/bot{token}"
     offset = None
@@ -508,7 +416,7 @@ async def _poll_updates():
                     if idemp.seen(chat_id, update.update_id):
                         offset = update.update_id + 1
                         continue
-                    replies = await process_text(chat_id, sender_id, text, (s, registry, copies, ranking, sessions, idemp, dispatcher, http))
+                    replies = await process_text(chat_id, sender_id, text, (s, registry, sessions, idemp, dispatcher, http))
                     for rtxt in replies:
                         for chunk in paginate(rtxt):
                             await send_telegram_message(s.TELEGRAM_BOT_TOKEN, chat_id, chunk, s.REPLY_PARSE_MODE)
@@ -525,7 +433,7 @@ async def health():
 
 @app.post("/telegram/webhook")
 async def telegram_webhook(request: Request, x_telegram_bot_api_secret_token: Optional[str] = Header(None)):
-    s, registry, copies, ranking, sessions, idemp, dispatcher, http = deps()
+    s, registry, sessions, idemp, dispatcher, http = deps()
     if s.TELEGRAM_MODE != "webhook":
         raise HTTPException(status_code=400, detail="Not in webhook mode")
     if not x_telegram_bot_api_secret_token or x_telegram_bot_api_secret_token != s.TELEGRAM_WEBHOOK_SECRET:
@@ -548,7 +456,7 @@ async def telegram_webhook(request: Request, x_telegram_bot_api_secret_token: Op
         return {"ok": True}
 
     try:
-        replies = await process_text(chat_id, sender_id, text, (s, registry, copies, ranking, sessions, idemp, dispatcher, http))
+        replies = await process_text(chat_id, sender_id, text, (s, registry, sessions, idemp, dispatcher, http))
     except Exception as e:
         json_log(action="process", status="error", error=str(e), chat_id=chat_id)
         replies = [escape_mdv2("Internal error")]
@@ -565,11 +473,11 @@ async def telegram_webhook(request: Request, x_telegram_bot_api_secret_token: Op
 
 @app.post("/telegram/test")
 async def telegram_test(body: TestRouteIn):
-    s, registry, copies, ranking, sessions, idemp, dispatcher, http = deps()
+    s, registry, sessions, idemp, dispatcher, http = deps()
     chat_id = body.chat_id
     text = body.text
     sender_id = s.owner_ids[0] if s.owner_ids else 0
-    replies = await process_text(chat_id, sender_id, text, (s, registry, copies, ranking, sessions, idemp, dispatcher, http))
+    replies = await process_text(chat_id, sender_id, text, (s, registry, sessions, idemp, dispatcher, http))
     # Also send via Telegram for parity
     for r in replies:
         for chunk in paginate(r):
