@@ -89,3 +89,32 @@ def test_webhook_process_text_and_idempotency(client, monkeypatch, capture_teleg
     assert len(capture_telegram) in (1,)
     assert capture_telegram[0]["chat_id"] == 999
     assert "EUR/USD" in capture_telegram[0]["text"] or "eur/usd" in capture_telegram[0]["text"].lower()
+
+
+def test_test_endpoint_price_prompt_and_table(client, monkeypatch, capture_telegram):
+    # First prompt
+    r1 = client.post("/telegram/test", json={"chat_id": 1010, "text": "/price"})
+    assert r1.status_code == 200 and r1.json()["ok"] is True
+    # The first send is the prompt
+    assert capture_telegram
+    assert "what symbols" in capture_telegram[-1]["text"].lower()
+
+    # Now table with partial
+    import app.app as appmod  # type: ignore
+
+    async def _fake_dispatch(spec, args):
+        if spec.get("service") == "market_data":
+            return {
+                "ok": True,
+                "partial": True,
+                "error": {"code": "NOT_FOUND", "message": "some failed", "details": {"symbols_failed": ["BAD.US"]}},
+                "data": {"quotes": [
+                    {"symbol": "AAPL.US", "price_eur": 100.0, "open_eur": 100.0, "market": "US"},
+                ]}
+            }
+        return {"ok": True, "data": {}}
+
+    monkeypatch.setattr(appmod.Dispatcher, "dispatch", lambda self, spec, args: _fake_dispatch(spec, args))
+    r2 = client.post("/telegram/test", json={"chat_id": 1010, "text": "aapl bad.us"})
+    assert r2.status_code == 200 and r2.json()["ok"] is True
+    assert any("some symbols were not found" in m["text"].lower() for m in capture_telegram)

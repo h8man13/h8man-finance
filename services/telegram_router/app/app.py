@@ -272,6 +272,14 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
             })
         else:
             sessions.clear(chat_id)
+        # Common footnotes (partial failures) in all modes
+        footnotes_common: List[str] = []
+        if resp.get("partial") or (isinstance(resp.get("error"), dict) and resp.get("error", {}).get("details")):
+            details = resp.get("error", {}).get("details", {}) if isinstance(resp.get("error"), dict) else {}
+            failed = details.get("symbols_failed") or []
+            if failed:
+                footnotes_common.append(escape_mdv2("Some symbols were not found: " + ", ".join(failed)))
+
         # Footnotes only in interactive mode (sticky)
         if not clear_after:
             footnotes: List[str] = []
@@ -280,7 +288,11 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
             # Interactive hint while sticky
             ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
             footnotes.append(escape_mdv2(f"You can send more symbols now. This session auto-closes after {ttl_min} minute(s) of inactivity or when you run a new command."))
+            if footnotes_common:
+                footnotes.extend(footnotes_common)
             text = f"{text}\n\n" + "\n".join(footnotes)
+        elif footnotes_common:
+            text = f"{text}\n\n" + "\n".join(footnotes_common)
         return [text]
     if spec.name == "/fx":
         data = resp.get("data", {})
