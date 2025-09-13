@@ -2,7 +2,7 @@ snippets:
   session_hint:
     - quote:
         lines:
-          - "You can send more symbols now. This session auto-closes after {ttl_min} minute(s) of inactivity or when you run a new command."
+          - "You can send more symbols now. This session auto-closes after {ttl_min} minutes of inactivity or when you run a new command."
   provider_note_us:
     - quote:
         lines:
@@ -54,6 +54,19 @@ screens:
             - "Send 1 to 10 tickers separated by space."
             - "Example: `/price nvda aapl`"
             - "Default: `.us`. Add suffix for other markets, e.g. `.xetra`."
+      - include: session_hint
+
+  price_prompt_missing:
+    blocks:
+      - header: "What symbols should I check?"
+      - bullets:
+          items:
+            - "Send 1 to 10 tickers separated by space."
+            - "Example: `/price nvda aapl`"
+            - "Default: `.us`. Add suffix for other markets, e.g. `.xetra`."
+      - paragraph: "Some symbols were not found:"
+      - bullets:
+          items: "{not_found_symbols}"
       - include: session_hint
 
   price_result:

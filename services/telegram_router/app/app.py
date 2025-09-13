@@ -259,17 +259,15 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
                 "missing_from": [],
                 "sticky": True,
             })
-            # Prefer UI screens, then per-command blocks, then prompts.*, otherwise fall back
-            ui = load_ui(get_settings().UI_PATH)
-            if ui:
-                ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
+            # Prefer UI screens showing missing symbols when available
+            ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
+            details = resp.get("error", {}).get("details", {}) if isinstance(resp.get("error"), dict) else {}
+            failed = details.get("symbols_failed") or []
+            if isinstance(failed, list) and failed:
+                pages = render_screen(ui, "price_prompt_missing", {"ttl_min": ttl_min, "not_found_symbols": failed})
+            else:
                 pages = render_screen(ui, "price_prompt", {"ttl_min": ttl_min})
-                if pages:
-                    return [p for p in pages]
-            usage = spec.help.get("usage", "")
-            example = spec.help.get("example", "")
-            msg = f"Use: {usage}"
-            return [escape_mdv2(msg)]
+            return [p for p in pages]
 
         # Build rows for table
         rows: List[List[str]] = [["SYMBOL", "NOW", "OPEN", "%", "MARKET", "FRESHNESS"]]
