@@ -8,7 +8,8 @@ from babel.numbers import format_currency
 
 # Telegram MarkdownV2 escaping: avoid escaping '.' to keep numbers readable
 # Also leave '-' unescaped for readability
-MDV2_ESCAPE_CHARS = set("_[]()~`>#+=|{}!")
+# Full MarkdownV2 escape set outside entities per Telegram spec
+MDV2_ESCAPE_CHARS = set("_*[]()~`>#+-=|{}.!")
 
 
 def escape_mdv2(s: str) -> str:

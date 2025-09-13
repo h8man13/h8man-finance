@@ -128,7 +128,8 @@ def test_price_interactive_flow_with_footnote(monkeypatch):
     # Table includes Market and Freshness columns
     assert txt2.startswith("```") and "MARKET" in txt2 and "FRESHNESS" in txt2
     # Interactive hint present (contains ttl minutes wording)
-    assert "auto-closes" in txt2.lower()
+    low2 = txt2.lower()
+    assert ("auto-closes" in low2) or ("auto\\-closes" in low2)
     # Session should still be open (sticky)
     assert sessions.get(3101) and sessions.get(3101).get("cmd") == "/price"
 
@@ -153,7 +154,8 @@ def test_price_one_shot_no_interactive_hint(monkeypatch):
     assert out and out[0]
     txt = out[0]
     # No interactive hint in one-shot
-    assert "auto-closes" not in txt.lower()
+    low = txt.lower()
+    assert ("auto-closes" not in low) and ("auto\\-closes" not in low)
     # Session cleared
     assert sessions.get(3201) is None
 
@@ -168,7 +170,7 @@ def test_price_prompt_has_footnote(monkeypatch):
     out = appmod.asyncio.run(appmod.process_text(chat_id=3301, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/price", ctx=ctx))
     assert out and out[0]
     txt = out[0].lower()
-    assert "auto-closes" in txt
+    assert ("auto-closes" in txt) or ("auto\\-closes" in txt)
     assert sessions.get(3301) and sessions.get(3301).get("cmd") == "/price"
 
 
@@ -189,3 +191,5 @@ def test_fx_default_no_args(monkeypatch):
     out = appmod.asyncio.run(appmod.process_text(chat_id=3401, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/fx", ctx=ctx))
     assert out and out[0]
     assert "USD/EUR" in out[0] or "usd/eur" in out[0].lower()
+
+

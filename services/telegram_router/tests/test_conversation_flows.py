@@ -94,7 +94,7 @@ def test_fx_inversion_display(monkeypatch):
     out = appmod.asyncio.run(appmod.process_text(chat_id=5401, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/fx eur usd", ctx=ctx))
     assert out and out[0]
     txt = out[0].lower()
-    assert "eur/usd" in txt and ("0.5" in txt or "0,5" in txt)
+    assert "eur/usd" in txt and ("0.5" in txt or "0,5" in txt or "0\.5" in txt)
 
 
 def test_price_market_column_defaults_to_us(monkeypatch):
@@ -355,3 +355,4 @@ def test_end_to_end_user_flow(monkeypatch):
     # /p amzn nope.us -> partial footnote or service error
     o7 = appmod.asyncio.run(appmod.process_text(chat_id=chat, sender_id=owner, text="/p amzn nope.us", ctx=ctx))
     assert o7 and ("some symbols were not found" in o7[0].lower() or "service error" in o7[0].lower())
+
