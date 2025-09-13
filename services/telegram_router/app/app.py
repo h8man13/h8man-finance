@@ -121,8 +121,8 @@ def build_help_text(registry: Registry, copies: Dict[str, Any], ranking: Dict[st
 
 async def process_text(chat_id: int, sender_id: int, text: str, ctx):
     s, registry, copies, ranking, sessions, idemp, dispatcher, http = ctx
-    # owner gate
-    if sender_id not in s.owner_ids:
+    # owner gate (only if configured)
+    if s.owner_ids and sender_id not in s.owner_ids:
         return [escape_mdv2(copies.get("generic", {}).get("not_authorized", "Not authorized."))]
 
     # parse
@@ -247,7 +247,7 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
             n_txt = euro(now_eur) if now_eur is not None else "n/a"
             o_txt = euro(open_eur) if open_eur is not None else "n/a"
             pct_txt = f"{pct:+.1f}%" if pct is not None else "n/a"
-            market_col = market or "-"
+            market_col = market or ("US" if sym.endswith(".US") else "-")
             freshness = str(q.get("freshness") or "").strip() or "n/a"
             ftime = str(q.get("fresh_time") or "").strip()
             fcol = f"{freshness} ({ftime})".strip() if ftime else freshness
