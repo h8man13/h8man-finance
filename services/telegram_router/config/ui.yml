@@ -1,142 +1,129 @@
+###############################################
+# Telegram Router UI (MarkdownV2 renderer)
+#
+# How to read this file
+# - snippets: small reusable blocks you can include from screens
+# - screens: full messages composed of blocks; the app renders these by key
+# - Placeholders like {ttl_min}, {table_rows}, {not_found_symbols} are
+#   interpolated by the router before sending to Telegram.
+#
+# Price flow (what renders when)
+# - price_prompt: shown when /price is issued without tickers (first prompt),
+#   or when no quotes returned AND there are no missing tickers to list.
+# - price_prompt_missing: shown when no quotes returned AND some tickers are
+#   missing; displays a bullet list of missing tickers and a hint.
+# - price_result: shown when quotes are returned and the result is NOT partial.
+# - price_partial_error: shown when quotes are returned AND some tickers could
+#   not be found (partial with explicit bullet list).
+# - price_partial_note: shown when quotes are returned but upstream marked
+#   the result partial and did not provide a list of missing tickers. Shows a
+#   short note instead of a bullet list.
+# - price_not_found: shown when only invalid tickers are sent (no quotes).
+#
+# Internals (derivation)
+# - The router derives {not_found_symbols} when upstream omits details by
+#   comparing requested tickers vs returned rows (prefix match: AMZN -> AMZN.US).
+#
+# Other screens
+# - help: static help landing
+# - unknown_input / unknown_command / invalid_template / service_error: generic
+#   system messages
+# - *_prompt: per-command prompts for missing args
+###############################################
 snippets:
   session_hint:
-    - quote:
-        lines:
-          - "This session stays open unless you're inactive for {ttl_min} minutes or run another command, so you can keep checking new symbols without rerunning /price."
+    - paragraph: "You can keep sending tickers without rerunning /price. Closes after {ttl_min} min or on the next command."
+  symbol_error: 
+    - paragraph: "Fix them or send new ones without rerunning /price. Closes after {ttl_min} min or on the next command."
   provider_note_us:
-    - paragraph: "Requesting `.US` from Europe may only return live prices during US market hours. This is a limitation of the data provider."
+    - paragraph: "Requesting .US from Europe may only return live prices during US market hours. This is a limitation of the data provider."
+  age_note:
+    - paragraph: "Age shows how fresh the price is: L = Live, P = Prev close, E = End-of-day, D = Delayed, or a 3-letter code or n-a."
 
 screens:
+  # /help - help landing
   help:
     blocks:
-      - paragraph: "Here is a list of available commands. Use them to view or manage your portfolio and check markets."
-      - spacer: { lines: 1 }
-      - subheader: "Portfolio"
-      - bullets:
-          items:
-            - "/portfolio or /po - compact snapshot of holdings"
-            - "/portfolio_snapshot d|w|m|y - portfolio time-weighted return snapshots"
-            - "/portfolio_summary d|w|m|y - summarized performance with benchmark comparisons"
-            - "/portfolio_breakdown d|w|m|y - performance by each holding and benchmark"
-            - "/portfolio_digest d|w|m|y - overview of value, benchmarks, movers, allocation"
-            - "/portfolio_movers d|w|m|y - top gainers & losers"
-            - "/allocation - current vs target allocations"
-            - "/allocation_edit `etf,stocks,crypto` - adjust target allocations"
-            - "/rename `symbol` `nickname` - assign or update a nickname for a symbol"
-            - "/tx `n` - show last transactions"
-            - "/cash - current available cash balance"
-            - "/cash_add `amount` - add or remove cash balance manually"
-      - spacer: { lines: 1 }
-      - subheader: "Trading"
-      - bullets:
-          items:
-            - "/buy `qty` `symbol` `price_ccy` - record a buy transaction"
-            - "/sell `qty` `symbol` `price_ccy` - record a sell transaction"
-            - "/add `qty` `symbol` `type` - add or increase a position"
-            - "/remove `symbol` - remove a position fully"
+      - paragraph: "Commands you can use to manage your portfolio and check markets."
       - spacer: { lines: 1 }
       - subheader: "Market"
       - bullets:
           items:
-            - "/price or /p `symbols...` - latest quotes for given tickers"
-            - "/fx `base` `quote`"
+            - "/price or /p - latest quotes for given tickers"
+            - "/fx - latest USD to EUR conversion rate"
       - spacer: { lines: 1 }
-      - subheader: "Other"
+      - subheader: "Portfolio"
       - bullets:
           items:
-            - "/cancel"
-            - "/exit"
+            - "/portfolio or /po - fresh snapshot of your holdings"
+            - "/po_snapshot - percent return snapshots vs benchmarks"
+            - "/po_summary - portfolio value and performance vs benchmarks"
+            - "/po_breakdown - holdings level performance vs benchmarks"
+            - "/po_digest - overview of returns, benchmarks, movers, allocation"
+            - "/po_movers - top gainers & losers"
+            - "/allocation - current vs target allocations"
+            - "/allocation_edit [etf|stocks|crypto] - adjust target allocations"
+            - "/rename - assign or update a nickname for a symbol"
+            - "/tx - show last transactions"
+            - "/cash - current available cash balance"
+            - "/cash_add - add or remove cash balance manually"
       - spacer: { lines: 1 }
-      - paragraph: "Tip: each command shows its input pattern in backticks, so you know exactly how to use it."
+      - subheader: "Trading"
+      - bullets:
+          items:
+            - "/buy - record a buy transaction"
+            - "/sell - record a sell transaction"
+            - "/add - add or increase a position"
+            - "/remove - remove a position fully"
 
+  # /price - first prompt (missing args), or no quotes and no missing list
   price_prompt:
     blocks:
-      - header: "Which symbols do you want to check?"
+      - header: "What tickers should I check?"
       - bullets:
           items:
             - "Enter 1 to 10 tickers, separated by spaces."
-            - "Example: /price `nvda aapl zal.de`"
-            - "Symbols default to `.us` (e.g. `nvda`). For other markets, add a suffix like `tsla.xetra` to ensure correct currency conversion."
-      - include: session_hint
+            - "Example: /price NVDA GOOG ZAL.DE"
+            - "Tickers default to .US (e.g. NVDA). For other markets, add a suffix like TSLA.XETRA to ensure correct currency conversion."
+            - "You can keep sending tickers without rerunning /price. Closes after {ttl_min} min or on the next command."
 
-  price_prompt_missing:
-    blocks:
-      - header: "What symbols should I check?"
-      - bullets:
-          items:
-            - "Enter 1 to 10 tickers, separated by spaces."
-            - "Example: /price `nvda aapl zal.de`"
-            - "Symbols default to `.us` (e.g. `nvda`). For other markets, add a suffix like `tsla.xetra` to ensure correct currency conversion."
-      - paragraph: "Some symbols were not found:"
-      - bullets:
-          items: "{not_found_symbols}"
-      - include: session_hint
-
+  # /price - quotes returned (non-partial)
   price_result:
     blocks:
       - table:
           rows: "{table_rows}"
       - include: provider_note_us
+      - include: age_note
 
-  price_result_interactive:
-    blocks:
-      - table:
-          rows: "{table_rows}"
-      - include: provider_note_us
-      - include: session_hint
-
+  # /price - quotes returned & partial with explicit missing list
   price_partial_error:
     blocks:
       - table:
           rows: "{table_rows}"
-      - paragraph: "Some symbols were not found:"
+      - include: age_note
+      - paragraph: "Some tickers were not found:"
       - bullets:
           items: "{not_found_symbols}"
-      - include: provider_note_us
+      - include: symbol_error
 
+  # /price - quotes returned & partial without a list; show short note
   price_partial_note:
     blocks:
       - table:
           rows: "{table_rows}"
-      - paragraph: "Some symbols were not found."
-      - include: provider_note_us
+      - include: age_note
+      - paragraph: "Some tickers were not found."
+      - include: symbol_error
 
-  price_partial_error_interactive:
-    blocks:
-      - table:
-          rows: "{table_rows}"
-      - paragraph: "Some symbols were not found:"
-      - bullets:
-          items: "{not_found_symbols}"
-      - include: provider_note_us
-
+  # /price - no quotes and some tickers missing (minimal missing list)
   price_not_found:
     blocks:
-      - paragraph: "Some symbols were not found:"
+      - paragraph: "Some tickers were not found:"
       - bullets:
           items: "{not_found_symbols}"
+      - include: symbol_error    
 
-  price_not_found_interactive:
-    blocks:
-      - paragraph: "Some symbols were not found:"
-      - bullets:
-          items: "{not_found_symbols}"
-      - include: provider_note_us
-
-  price_partial_note_interactive:
-    blocks:
-      - table:
-          rows: "{table_rows}"
-      - paragraph: "Some symbols were not found."
-      - include: provider_note_us
-      - include: session_hint
-  
-  price_partial_note:
-    blocks:
-      - table:
-          rows: "{table_rows}"
-      - paragraph: "Some symbols were not found."
-
+  # Unknown input & command
   unknown_input:
     blocks:
       - paragraph: "Didn’t catch that. Try /help"
@@ -146,6 +133,7 @@ screens:
       - paragraph: "Unknown command: `{cmd}`"
       - paragraph: "Try /help"
 
+  # Validation & upstream errors
   invalid_template:
     blocks:
       - paragraph: "Hmm, that didn’t look right — {error}"

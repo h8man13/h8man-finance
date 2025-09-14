@@ -268,14 +268,64 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
             details = resp.get("error", {}).get("details", {}) if isinstance(resp.get("error"), dict) else {}
             failed = details.get("symbols_failed") or []
             if isinstance(failed, list) and failed:
-                key = "price_not_found_interactive" if keep_sticky else "price_not_found"
-                pages = render_screen(ui, key, {"ttl_min": ttl_min, "not_found_symbols": [str(x).upper() for x in failed]})
+                pages = render_screen(ui, "price_not_found", {"ttl_min": ttl_min, "not_found_symbols": [str(x).upper() for x in failed]})
             else:
                 pages = render_screen(ui, "price_prompt", {"ttl_min": ttl_min})
             return [p for p in pages]
 
-        # Build rows for table
-        rows: List[List[str]] = [["SYMBOL", "NOW", "OPEN", "%", "MARKET", "FRESHNESS"]]
+        # Build rows for table (compact for mobile): MKT and AGE are short
+        rows: List[List[str]] = [["SYMBOL", "NOW", "OPEN", "%", "MKT", "AGE"]]
+
+        def _market_label(sym: str, market_code: str) -> str:
+            sfx = ""
+            if "." in sym:
+                sfx = sym.split(".")[-1].upper()
+            code = (market_code or "").upper()
+            # Prefer a specific suffix over generic country codes
+            cand = [sfx, code]
+            m = {
+                # US
+                "US": "US", "NYSE": "NYS", "NASDAQ": "NAS", "NSDQ": "NAS",
+                # Germany / Xetra
+                "XETRA": "XET", "DE": "XET", "FWB": "XET",
+                # UK
+                "LSE": "LSE", "LON": "LSE",
+                # Canada
+                "TSX": "TSX", "TSXV": "TSV",
+                # Japan
+                "TSE": "TYO", "JPX": "TYO",
+                # Australia
+                "ASX": "ASX",
+                # Switzerland
+                "SIX": "SIX", "SWX": "SIX",
+                # France / Euronext Paris
+                "PAR": "PAR", "EPA": "PAR",
+                # Netherlands / Euronext Amsterdam
+                "AMS": "AMS", "AEX": "AMS",
+                # Spain
+                "BME": "MAD", "MCE": "MAD",
+                # Hong Kong
+                "HK": "HK", "HKEX": "HK",
+                # Singapore
+                "SGX": "SG",
+            }
+            for k in cand:
+                if k and k in m:
+                    return m[k]
+            # Fallback to suffix or code or '-'
+            return sfx or code or "-"
+
+        def _age_label(fresh: str) -> str:
+            f = (fresh or "").lower()
+            if "live" in f:
+                return "L"
+            if "prev" in f:
+                return "P"
+            if "eod" in f or "end of day" in f:
+                return "E"
+            if "delay" in f:
+                return "D"
+            return f.upper()[:3] if f else "n/a"
         for q in quotes:
             sym = str(q.get("symbol") or "").upper()
             disp = sym.replace(".US", "")
@@ -293,11 +343,9 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
             n_txt = euro(now_eur) if now_eur is not None else "n/a"
             o_txt = euro(open_eur) if open_eur is not None else "n/a"
             pct_txt = f"{pct:+.1f}%" if pct is not None else "n/a"
-            market_col = market or ("US" if sym.endswith(".US") else "-")
-            freshness = str(q.get("freshness") or "").strip() or "n/a"
-            ftime = str(q.get("fresh_time") or "").strip()
-            fcol = f"{freshness} ({ftime})".strip() if ftime else freshness
-            rows.append([f"{disp}{star}", n_txt, o_txt, pct_txt, market_col, fcol])
+            market_col = _market_label(sym, market)
+            age = _age_label(str(q.get("freshness") or ""))
+            rows.append([f"{disp}{star}", n_txt, o_txt, pct_txt, market_col, age])
         # Choose UI screen
         partial = bool(resp.get("partial"))
         details = resp.get("error", {}).get("details", {}) if isinstance(resp.get("error"), dict) else {}
@@ -346,15 +394,15 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
 
         # Footnotes only in interactive mode (sticky)
         if not clear_after:
-            # Re-render interactive variants via UI
+            # Re-render using the same base screens (they include footers)
             ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
             data_ui = {"table_rows": rows, "not_found_symbols": (eff_failed or []), "ttl_min": ttl_min}
             if has_missing:
-                pages2 = render_screen(ui, "price_partial_error_interactive", data_ui)
+                pages2 = render_screen(ui, "price_partial_error", data_ui)
             elif partial:
-                pages2 = render_screen(ui, "price_partial_note_interactive", data_ui)
+                pages2 = render_screen(ui, "price_partial_note", data_ui)
             else:
-                pages2 = render_screen(ui, "price_result_interactive", data_ui)
+                pages2 = render_screen(ui, "price_result", data_ui)
             text = pages2[0]
         elif footnotes_common_str:
             text = f"{text}\n\n{footnotes_common_str}"

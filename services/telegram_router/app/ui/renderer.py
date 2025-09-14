@@ -95,7 +95,7 @@ def render_blocks(blocks: List[Dict[str, Any]], *, data: Dict[str, Any] | None =
             if isinstance(rows, list) and rows:
                 _blank_line(out)
                 out.append(monotable([[str(c) for c in r] for r in rows]))
-                _blank_line(out)
+                # No extra blank line after tables to avoid extra spacing below
             continue
 
         if btype == "bullets":
