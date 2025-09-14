@@ -160,6 +160,31 @@ async def fetch_pair_generic(client: httpx.AsyncClient, base: str, quote: str) -
     except Exception:
         return None, "exchangerate_exception"
 
+async def fetch_pair_eodhd(client: httpx.AsyncClient, base: str, quote: str) -> Tuple[Optional[float], Optional[str]]:
+    """Fetch BASE->QUOTE via EODHD, symbol pattern like XAUUSD.FOREX or EURUSD.FOREX."""
+    if not EODHD_KEY:
+        return None, "missing_eodhd_key"
+    sym = f"{base}{quote}.FOREX"
+    url = f"https://eodhd.com/api/real-time/{sym}"
+    params = {"api_token": EODHD_KEY, "fmt": "json"}
+    try:
+        r = await client.get(url, params=params, timeout=HTTP_TIMEOUT)
+        if r.status_code != 200:
+            return None, f"eodhd_http_{r.status_code}"
+        data = r.json()
+        # EODHD sometimes returns list
+        if isinstance(data, list) and data:
+            data = data[0]
+        close = data.get("close") or data.get("price") or data.get("last")
+        if close is None:
+            return None, "eodhd_no_rate"
+        rate = float(close)
+        if rate <= 0:
+            return None, "eodhd_bad_rate"
+        return rate, "eodhd"
+    except Exception:
+        return None, "eodhd_exception"
+
 async def get_pair(base: str, quote: str, force: bool) -> FxResp:
     b = base.upper()
     q = quote.upper()
@@ -180,9 +205,16 @@ async def get_pair(base: str, quote: str, force: bool) -> FxResp:
 
     async with httpx.AsyncClient() as client:
         rate, src = await fetch_pair_generic(client, b, q)
+        # If generic provider didn't have a rate, try EODHD as a fallback for common pairs (e.g., XAUUSD)
+        if rate is None:
+            r2, src2 = await fetch_pair_eodhd(client, b, q)
+            if r2 is not None:
+                rate, src = r2, src2
 
     if rate is None:
-        raise HTTPException(status_code=502, detail=f"Failed to fetch {b}_{q} from providers")
+        # Provide a clearer reason for common failure modes
+        hint = " (market may be closed or symbol unsupported)"
+        raise HTTPException(status_code=502, detail=f"Failed to fetch {b}_{q}{hint}")
 
     payload = FxResp(
         pair=f"{b}_{q}",

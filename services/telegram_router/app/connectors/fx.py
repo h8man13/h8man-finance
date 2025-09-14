@@ -21,7 +21,19 @@ class FXClient:
         if force:
             params["force"] = True
         resp = await self.http.request("GET", url, params=params)
-        return resp.json()
+        # Raise on HTTP errors so dispatcher wraps properly
+        if resp.status_code >= 400:
+            try:
+                js = resp.json()
+                msg = js.get("detail") or js.get("message") or str(js)
+            except Exception:
+                msg = f"fx http {resp.status_code}"
+            raise RuntimeError(msg)
+        js = resp.json()
+        # Ensure expected shape; otherwise raise to trigger error screen
+        if not isinstance(js, dict) or js.get("rate") in (None, "", []):
+            raise RuntimeError("Invalid FX response")
+        return js
 
     async def refresh_usdeur(self) -> Dict[str, Any]:
         """Force refresh the USD_EUR cache and return the latest rate."""
