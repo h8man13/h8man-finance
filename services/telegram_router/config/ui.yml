@@ -10,8 +10,7 @@
 # Price flow (what renders when)
 # - price_prompt: shown when /price is issued without tickers (first prompt),
 #   or when no quotes returned AND there are no missing tickers to list.
-# - price_prompt_missing: shown when no quotes returned AND some tickers are
-#   missing; displays a bullet list of missing tickers and a hint.
+#   
 # - price_result: shown when quotes are returned and the result is NOT partial.
 # - price_partial_error: shown when quotes are returned AND some tickers could
 #   not be found (partial with explicit bullet list).
@@ -51,7 +50,7 @@ screens:
       - bullets:
           items:
             - "/price or /p - latest quotes for given tickers"
-            - "/fx - latest USD to EUR conversion rate"
+            - "/fx - live exchange rate for a currency pair"
       - spacer: { lines: 1 }
       - subheader: "Portfolio"
       - bullets:
@@ -129,7 +128,7 @@ screens:
       - paragraph: "Unknown command: `{cmd}`"
       - paragraph: "Try /help"
 
-  # Validation & upstream errors
+  # Validation errors for prompts (bad input) and upstream errors
   invalid_template:
     blocks:
       - paragraph: "Hmm, that didn’t look right — {error}"
@@ -142,105 +141,132 @@ screens:
       - paragraph: "Try: {usage}"
       - paragraph: "Example: {example}"
 
+  # /fx – shown when user provides no args (base/quote). Session stays open to accept the next message.
+  fx_prompt:
+    blocks:
+      - header: "Check a currency pair"
+      - bullets:
+          items:
+            - "Enter a base and quote currency, separated by space."
+            - "Example: /fx USD EUR"
+            - "Live rate is shown rounded to 4 decimals."
+  # /fx – success result for any pair BASE/QUOTE
+  fx_result:
+    blocks:
+      - paragraph: "{base}/{quote}: {rate}"
+      
   # FX-specific errors (e.g., unsupported pair or upstream failure)
   fx_error:
     blocks:
-      - paragraph: "{message}"
-      - paragraph: "Try: {usage}"
+      - paragraph: "⚠️ Unable to fetch {base} {quote} right now."
+      - paragraph: "This may happen if the pair isn’t supported or the market is unavailable."
+      - paragraph: "Try again with: {usage}"
       - paragraph: "Example: {example}"
 
+  # Shown when the sender is not in ROUTER_OWNER_IDS
   not_authorized:
     blocks:
       - paragraph: "Not authorized."
 
+  # Shown after /cancel or /exit
   canceled:
     blocks:
       - paragraph: "Okay, closed."
 
+  # Generic success fallback (rarely used)
   done:
     blocks:
       - paragraph: "✅ Done"
 
+  # /buy – missing args prompt
   buy_prompt:
     blocks:
       - header: "Use: [qty] [symbol] [price_ccy]"
 
+  # /sell – missing args prompt
   sell_prompt:
     blocks:
       - header: "Use: [qty] [symbol] [price_ccy]"
 
+  # /add – missing args prompt
   add_prompt:
     blocks:
       - header: "Use: [qty] [symbol] [type]"
 
+  # /remove – missing args prompt
   remove_prompt:
     blocks:
       - header: "Use: [symbol]"
 
+  # /cash – no args prompt
   cash_prompt:
     blocks:
       - header: "Use: /cash"
 
+  # /cash_add – missing args prompt
   cash_add_prompt:
     blocks:
       - header: "Use: [amount]"
 
+  # /tx – optional args prompt
   tx_prompt:
     blocks:
       - header: "Use: [n]"
 
+  # /portfolio_snapshot – optional args prompt
   portfolio_snapshot_prompt:
     blocks:
       - header: "Use: [period=d|w|m|y]"
 
+  # /portfolio_summary – optional args prompt
   portfolio_summary_prompt:
     blocks:
       - header: "Use: [period=d|w|m|y]"
 
+  # /portfolio_breakdown – optional args prompt
   portfolio_breakdown_prompt:
     blocks:
       - header: "Use: [period=d|w|m|y]"
 
+  # /portfolio_digest – optional args prompt
   portfolio_digest_prompt:
     blocks:
       - header: "Use: [period=d|w|m|y]"
 
+  # /portfolio_movers – optional args prompt
   portfolio_movers_prompt:
     blocks:
       - header: "Use: [period=d|w|m|y]"
 
+  # /allocation – no args prompt
   allocation_prompt:
     blocks:
       - header: "Use: /allocation"
 
+  # /allocation_edit – missing args prompt
   allocation_edit_prompt:
     blocks:
       - header: "Use: [etf,stocks,crypto]"
 
+  # /po_if – missing args prompt
   po_if_prompt:
     blocks:
       - header: "Use: [scope] [+x%|-x%]"
 
+  # /rename – missing args prompt
   rename_prompt:
     blocks:
       - header: "Use: [symbol] [nickname]"
 
+  # /buy – success message
   buy_success:
     blocks:
       - paragraph: "buy: *{symbol}* ×{qty} @ {price_ccy}"
 
+  # /sell – success message
   sell_success:
     blocks:
       - paragraph: "sell: *{symbol}* ×{qty} @ {price_ccy}"
 
 
-  fx_prompt:
-    blocks:
-      - header: "Use: [base] [quote]"
-      - bullets:
-          items:
-            - "Example: `/fx usd eur`"
-            - "Default: usd eur. Live rate; display rounded to 4 decimals."
-  fx_result:
-    blocks:
-      - paragraph: "{base}/{quote}: {rate}"
+

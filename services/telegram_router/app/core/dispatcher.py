@@ -38,11 +38,11 @@ class Dispatcher:
             if path == "/fx" and method == "GET":
                 base = (payload.get("base") or "").strip()
                 quote = (payload.get("quote") or "").strip()
-                # Defaults
-                b = base or "USD"
-                q = quote or "EUR"
+                if not base or not quote:
+                    # Signal UI prompt for /fx
+                    return {"ok": True, "data": {"fx_prompt": True}}
                 try:
-                    data = await self.fx.get_fx(base=b, quote=q, force=True)
+                    data = await self.fx.get_fx(base=base, quote=quote, force=True)
                     # Wrap raw FX payload in envelope for router flow
                     return {"ok": True, "data": data}
                 except Exception as e:

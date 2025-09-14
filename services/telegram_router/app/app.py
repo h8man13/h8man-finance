@@ -238,13 +238,18 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
     resp = await dispatcher.dispatch(spec.dispatch, values)
     if not isinstance(resp, dict) or not resp.get("ok", False):
         err = (resp or {}).get("error", {})
-        message = err.get("message") or "Internal error"
         usage = spec.help.get("usage", "")
         example = spec.help.get("example", "")
-        # Use a dedicated FX error screen for /fx to keep copy tailored
-        screen_key = "fx_error" if spec.name == "/fx" else "service_error"
-        pages = render_screen(ui, screen_key, {"message": message, "usage": usage, "example": example})
-        return [p for p in pages]
+        if spec.name == "/fx":
+            # Build a UI-driven message; do not leak backend text
+            base = (values.get("base", "") or "").upper()
+            quote = (values.get("quote", "") or "").upper()
+            pages = render_screen(ui, "fx_error", {"base": base or "?", "quote": quote or "?", "usage": usage, "example": example})
+            return [p for p in pages]
+        else:
+            message = err.get("message") or "Internal error"
+            pages = render_screen(ui, "service_error", {"message": message, "usage": usage, "example": example})
+            return [p for p in pages]
 
     # success mapping by command
     if spec.name == "/price":
@@ -417,11 +422,24 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
         return [text]
     if spec.name == "/fx":
         data = resp.get("data", {})
+        # Prompt flow when no args provided
+        if data.get("fx_prompt"):
+            # Open a sticky session to accept base/quote next
+            sessions.set(chat_id, {
+                "chat_id": chat_id,
+                "cmd": "/fx",
+                "expected": [f["name"] for f in spec.args_schema],
+                "got": {},
+                "missing_from": [],
+                "sticky": True,
+            })
+            pages = render_screen(ui, "fx_prompt", {})
+            return [p for p in pages]
         rate = data.get("rate") or data.get("close") or data.get("price")
         pair = (str(data.get("pair")) or "").upper()
         # fx upstream returns pair sometimes; keep inputs for clarity
-        base = (values.get("base", "") or "USD").upper()
-        quote = (values.get("quote", "") or "EUR").upper()
+        base = (values.get("base", "") or "").upper()
+        quote = (values.get("quote", "") or "").upper()
         # Invert if user requested EUR/USD but upstream pair is USD_EUR
         rate_disp = rate
         try:
@@ -430,7 +448,7 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
             rnum = None
         if pair == "USD_EUR" and base == "EUR" and quote == "USD" and rnum and rnum != 0.0:
             rate_disp = 1.0 / rnum
-        # Clear session by default for /fx (stateless)
+        # Clear session after success
         sessions.clear(chat_id)
         # Display: round to 4 decimals for communication purposes,
         # but leave upstream data untouched for any calculations elsewhere.
