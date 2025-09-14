@@ -17,14 +17,31 @@ def infer_market_currency(sym: str) -> Tuple[str, str]:
     """
     Infer (market, currency) for a normalized symbol.
     - Crypto pairs are considered USD at source.
-    - .XETRA is EUR.
+    - EUR markets (no USD->EUR FX applied): .XETRA, .F, .AS, .PA, .BR, .LS, .MI, .MC, .HE
     - Default to US, USD.
     """
     s = sym.strip().upper()
     if "-" in s:
         return ("CRYPTO", "USD")
-    if s.endswith(".XETRA"):
-        return ("XETRA", "EUR")
+
+    # Treat these exchanges as EUR-denominated like XETRA
+    eur_suffixes = [
+        ".XETRA",
+        ".F",   # Frankfurt
+        ".AS",  # Amsterdam
+        ".PA",  # Paris
+        ".BR",  # Brussels
+        ".LS",  # Lisbon
+        ".MI",  # Milan
+        ".MC",  # Madrid
+        ".HE",  # Helsinki
+    ]
+
+    for suf in eur_suffixes:
+        if s.endswith(suf):
+            market = "XETRA" if suf == ".XETRA" else suf.lstrip(".")
+            return (market, "EUR")
+
     return ("US", "USD")
 
 def eodhd_code_from_symbol(sym: str) -> str:

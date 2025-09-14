@@ -2,11 +2,9 @@ snippets:
   session_hint:
     - quote:
         lines:
-          - "You can send more symbols now. This session auto-closes after {ttl_min} minutes of inactivity or when you run a new command."
+          - "This session stays open unless you're inactive for {ttl_min} minutes or run another command, so you can keep checking new symbols without rerunning /price."
   provider_note_us:
-    - quote:
-        lines:
-          - "When you are in Berlin but request .US, the provider may show US prices only during US market hours. This is a provider limitation."
+    - paragraph: "Requesting `.US` from Europe may only return live prices during US market hours. This is a limitation of the data provider."
 
 screens:
   help:
@@ -15,45 +13,45 @@ screens:
       - subheader: "Portfolio"
       - bullets:
           items:
-            - "`/portfolio`"
-            - "`/portfolio_snapshot d|w|m|y`"
-            - "`/portfolio_summary d|w|m|y`"
-            - "`/portfolio_breakdown d|w|m|y`"
-            - "`/portfolio_digest d|w|m|y`"
-            - "`/portfolio_movers d|w|m|y`"
-            - "`/allocation`"
-            - "`/allocation_edit [etf,stocks,crypto]`"
-            - "`/rename [symbol] [nickname]`"
-            - "`/tx [n]`"
-            - "`/cash`"
-            - "`/cash_add [amount]`"
+            - "/portfolio"
+            - "/portfolio_snapshot d|w|m|y"
+            - "/portfolio_summary d|w|m|y"
+            - "/portfolio_breakdown d|w|m|y"
+            - "/portfolio_digest d|w|m|y"
+            - "/portfolio_movers d|w|m|y"
+            - "/allocation`"
+            - "/allocation_edit [etf,stocks,crypto]"
+            - "/rename [symbol] [nickname]"
+            - "/tx [n]`"
+            - "/cash"
+            - "/cash_add [amount]"
       - subheader: "Trading"
       - bullets:
           items:
-            - "`/buy [qty] [symbol] [price_ccy]`"
-            - "`/sell [qty] [symbol] [price_ccy]`"
-            - "`/add [qty] [symbol] [type]`"
-            - "`/remove [symbol]`"
+            - "/buy [qty] [symbol] [price_ccy]"
+            - "/sell [qty] [symbol] [price_ccy]"
+            - "/add [qty] [symbol] [type]"
+            - "/remove [symbol]"
       - subheader: "Market"
       - bullets:
           items:
-            - "`/price [symbols...]`"
-            - "`/fx [base] [quote]`"
+            - "/price [symbols...]"
+            - "/fx [base] [quote]"
       - subheader: "Other"
       - bullets:
           items:
-            - "`/cancel`"
-            - "`/exit`"
-      - footnote: "Tip: each command shows its input pattern in backticks, so you know exactly how to use it."
+            - "/cancel"
+            - "/exit"
+      - paragraph: "Tip: each command shows its input pattern in backticks, so you know exactly how to use it."
 
   price_prompt:
     blocks:
-      - header: "What symbols should I check?"
+      - header: "Which symbols do you want to check?"
       - bullets:
           items:
-            - "Send 1 to 10 tickers separated by space."
-            - "Example: `/price nvda aapl`"
-            - "Default: `.us`. Add suffix for other markets, e.g. `.xetra`."
+            - "Enter 1 to 10 tickers, separated by spaces."
+            - "Example: /price `nvda aapl zal.de`"
+            - "Symbols default to `.us` (e.g. `nvda`). For other markets, add a suffix like `tsla.xetra` to ensure correct currency conversion."
       - include: session_hint
 
   price_prompt_missing:
@@ -61,9 +59,9 @@ screens:
       - header: "What symbols should I check?"
       - bullets:
           items:
-            - "Send 1 to 10 tickers separated by space."
-            - "Example: `/price nvda aapl`"
-            - "Default: `.us`. Add suffix for other markets, e.g. `.xetra`."
+            - "Enter 1 to 10 tickers, separated by spaces."
+            - "Example: /price `nvda aapl zal.de`"
+            - "Symbols default to `.us` (e.g. `nvda`). For other markets, add a suffix like `tsla.xetra` to ensure correct currency conversion."
       - paragraph: "Some symbols were not found:"
       - bullets:
           items: "{not_found_symbols}"
@@ -89,12 +87,14 @@ screens:
       - paragraph: "Some symbols were not found:"
       - bullets:
           items: "{not_found_symbols}"
+      - include: provider_note_us
 
   price_partial_note:
     blocks:
       - table:
           rows: "{table_rows}"
       - paragraph: "Some symbols were not found."
+      - include: provider_note_us
 
   price_partial_error_interactive:
     blocks:
@@ -103,6 +103,8 @@ screens:
       - paragraph: "Some symbols were not found:"
       - bullets:
           items: "{not_found_symbols}"
+      - include: provider_note_us
+
   price_not_found:
     blocks:
       - paragraph: "Some symbols were not found:"
@@ -114,12 +116,16 @@ screens:
       - paragraph: "Some symbols were not found:"
       - bullets:
           items: "{not_found_symbols}"
+      - include: provider_note_us
 
   price_partial_note_interactive:
     blocks:
       - table:
           rows: "{table_rows}"
       - paragraph: "Some symbols were not found."
+      - include: provider_note_us
+      - include: session_hint
+  
   price_partial_note:
     blocks:
       - table:

@@ -267,10 +267,6 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
             ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
             details = resp.get("error", {}).get("details", {}) if isinstance(resp.get("error"), dict) else {}
             failed = details.get("symbols_failed") or []
-            # Derive missing from requested symbols when upstream doesn't provide details
-            if (not failed) and values.get("symbols"):
-                req = [str(x).upper() for x in (values.get("symbols") or [])]
-                failed = req
             if isinstance(failed, list) and failed:
                 key = "price_not_found_interactive" if keep_sticky else "price_not_found"
                 pages = render_screen(ui, key, {"ttl_min": ttl_min, "not_found_symbols": [str(x).upper() for x in failed]})
@@ -354,10 +350,9 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
             ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
             data_ui = {"table_rows": rows, "not_found_symbols": (eff_failed or []), "ttl_min": ttl_min}
             if has_missing:
-                # Minimal interactive output: table + missing list
-                pages2 = render_screen(ui, "price_partial_error", data_ui)
+                pages2 = render_screen(ui, "price_partial_error_interactive", data_ui)
             elif partial:
-                pages2 = render_screen(ui, "price_partial_note", data_ui)
+                pages2 = render_screen(ui, "price_partial_note_interactive", data_ui)
             else:
                 pages2 = render_screen(ui, "price_result_interactive", data_ui)
             text = pages2[0]

@@ -36,7 +36,12 @@ async def get_quotes(conn, symbols: List[str]) -> Dict:
         # EODHD real-time fields expected: code, close (last), timestamp, open, currency
         code = item.get("code") or item.get("symbol")
         symbol = normalize_symbol(code)
-        market, ccy = infer_market_currency(symbol)
+        # Determine market via suffix (for display), but prefer provider-reported currency when available
+        market, inferred_ccy = infer_market_currency(symbol)
+        reported_ccy_raw = item.get("currency")
+        reported_ccy = str(reported_ccy_raw).strip().upper() if reported_ccy_raw is not None else ""
+        # Use provider currency for conversion when it is USD or EUR; otherwise fall back to inferred
+        ccy = reported_ccy if reported_ccy in {"USD", "EUR"} else inferred_ccy
 
         # Last and open in native (robust against bad provider values)
         try:
@@ -50,7 +55,7 @@ async def get_quotes(conn, symbols: List[str]) -> Dict:
         except Exception:
             open_px = None
 
-        # EUR conversion rules
+        # EUR conversion rules: convert only when priced in USD; EUR (and others) pass through
         if ccy == "USD":
             price_eur = last * usd_eur
             open_eur = (open_px * usd_eur) if open_px is not None else None
@@ -72,7 +77,8 @@ async def get_quotes(conn, symbols: List[str]) -> Dict:
         out.append({
             "symbol": symbol,
             "market": market,
-            "currency": ccy,
+            # Expose the provider currency if present; otherwise the effective one used above
+            "currency": (reported_ccy or ccy),
             "price": qd(last),
             "price_eur": qd(price_eur),
             "open": qd(open_px) if open_px is not None else None,

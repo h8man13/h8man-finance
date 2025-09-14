@@ -152,3 +152,79 @@ def test_quote_crypto_and_sanitization(client, monkeypatch):
     assert btc["price_ccy"] == 20000.0 and btc["price_eur"] == 18000.0
     # open=0 -> pct_since_open should be None
     assert san["price_ccy"] == 10.0 and san["pct_since_open"] is None
+
+
+def test_quote_provider_currency_and_suffix_fallback(client, monkeypatch):
+    """
+    Provider-reported currency should drive conversion when available (USD/EUR),
+    falling back to suffix inference when missing.
+    - BMW.F with currency EUR -> no conversion
+    - FOO.F with missing currency -> suffix .F implies EUR -> no conversion
+    - BAR.AS with currency USD -> convert using USD_EUR
+    - AAPL.US with provider currency EUR -> no conversion (provider takes precedence)
+    """
+    from app.clients import eodhd as eod_mod  # type: ignore
+    from app.clients import fx as fx_mod  # type: ignore
+
+    async def batch(self, syms):
+        out = []
+        for s in syms:
+            if s == "BMW.F":
+                out.append({
+                    "code": s,
+                    "close": 50.0,
+                    "open": 40.0,
+                    "timestamp": 1_700_000_500,
+                    "currency": "EUR",
+                })
+            elif s == "FOO.F":
+                out.append({
+                    "code": s,
+                    "close": 10.0,
+                    "open": 10.0,
+                    "timestamp": 1_700_000_600,
+                    # currency missing -> fallback to suffix
+                })
+            elif s == "BAR.AS":
+                out.append({
+                    "code": s,
+                    "close": 20.0,
+                    "open": 10.0,
+                    "timestamp": 1_700_000_700,
+                    "currency": "USD",
+                })
+            elif s == "AAPL.US":
+                out.append({
+                    "code": s,
+                    "close": 100.0,
+                    "open": 95.0,
+                    "timestamp": 1_700_000_800,
+                    # provider says EUR even for .US -> prefer provider
+                    "currency": "EUR",
+                })
+        return out
+
+    async def fx(self):
+        return Decimal("0.90")
+
+    monkeypatch.setattr(eod_mod.EodhdClient, "batch_quotes", batch)
+    monkeypatch.setattr(fx_mod.FxClient, "usd_to_eur", fx)
+
+    r = client.get("/quote", params={"symbols": "BMW.F,FOO.F,BAR.AS,AAPL.US"})
+    assert r.status_code == 200
+    js = r.json()
+    assert js["ok"] is True
+    quotes = js["data"]["quotes"]
+
+    bmw = next(q for q in quotes if q["symbol"] == "BMW.F")
+    foo = next(q for q in quotes if q["symbol"] == "FOO.F")
+    bar = next(q for q in quotes if q["symbol"] == "BAR.AS")
+    aapl = next(q for q in quotes if q["symbol"] == "AAPL.US")
+
+    # EUR cases: no conversion
+    assert bmw["price_eur"] == 50.0
+    assert foo["price_eur"] == 10.0
+    # USD case: convert using 0.90
+    assert bar["price_eur"] == 18.0
+    # Provider EUR precedence over suffix
+    assert aapl["price_eur"] == 100.0
