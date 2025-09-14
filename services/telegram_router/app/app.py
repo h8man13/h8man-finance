@@ -263,12 +263,12 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
                 })
             else:
                 sessions.clear(chat_id)
-            # Prefer UI screens showing missing symbols when available
+            # Prefer UI screens showing missing symbols when available.
+            # For no-quotes responses, treat all requested as missing.
             ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
-            details = resp.get("error", {}).get("details", {}) if isinstance(resp.get("error"), dict) else {}
-            failed = details.get("symbols_failed") or []
-            if isinstance(failed, list) and failed:
-                pages = render_screen(ui, "price_not_found", {"ttl_min": ttl_min, "not_found_symbols": [str(x).upper() for x in failed]})
+            req_syms = [str(x).upper() for x in (values.get("symbols") or [])]
+            if req_syms:
+                pages = render_screen(ui, "price_not_found", {"ttl_min": ttl_min, "not_found_symbols": req_syms})
             else:
                 pages = render_screen(ui, "price_prompt", {"ttl_min": ttl_min})
             return [p for p in pages]

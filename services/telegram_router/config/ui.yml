@@ -31,14 +31,15 @@
 # - *_prompt: per-command prompts for missing args
 ###############################################
 snippets:
-  session_hint:
-    - paragraph: "You can keep sending tickers without rerunning /price. Closes after {ttl_min} min or on the next command."
   symbol_error: 
-    - paragraph: "Fix them or send new ones without rerunning /price. Closes after {ttl_min} min or on the next command."
-  provider_note_us:
-    - paragraph: "Requesting .US from Europe may only return live prices during US market hours. This is a limitation of the data provider."
-  age_note:
-    - paragraph: "Age shows how fresh the price is: L = Live, P = Prev close, E = End-of-day, D = Delayed, or a 3-letter code or n-a."
+    - paragraph: "⚠️ Some tickers were not found! Fix them or send new ones without rerunning /price."
+
+  session_hint:
+    - bullets:
+          items:
+            - "You can keep sending tickers without rerunning /price. Session closes after {ttl_min} min or on the next command."
+            - "Age shows how fresh the price is: L = Live, P = Prev close, E = End-of-day, D = Delayed, or a 3-letter code or n-a."
+            - "Requesting .US from Europe may only return live prices during US market hours. This is a limitation of the data provider."
 
 screens:
   # /help - help landing
@@ -80,48 +81,42 @@ screens:
   price_prompt:
     blocks:
       - header: "What tickers should I check?"
-      - bullets:
-          items:
-            - "Enter 1 to 10 tickers, separated by spaces."
-            - "Example: /price NVDA GOOG ZAL.DE"
-            - "Tickers default to .US (e.g. NVDA). For other markets, add a suffix like TSLA.XETRA to ensure correct currency conversion."
-            - "You can keep sending tickers without rerunning /price. Closes after {ttl_min} min or on the next command."
+      - include: session_hint
 
   # /price - quotes returned (non-partial)
   price_result:
     blocks:
       - table:
           rows: "{table_rows}"
-      - include: provider_note_us
-      - include: age_note
+      - paragraph: "💡 Keep in mind:"    
+      - bullets:
+          items:
+            - session_hint
+            - age_note
+            - provider_note_us
 
   # /price - quotes returned & partial with explicit missing list
   price_partial_error:
     blocks:
       - table:
           rows: "{table_rows}"
-      - include: age_note
-      - paragraph: "Some tickers were not found:"
-      - bullets:
-          items: "{not_found_symbols}"
       - include: symbol_error
-
+      - bullets:
+          items: "{not_found_symbols}"   
+      
   # /price - quotes returned & partial without a list; show short note
   price_partial_note:
     blocks:
       - table:
           rows: "{table_rows}"
-      - include: age_note
-      - paragraph: "Some tickers were not found."
       - include: symbol_error
 
   # /price - no quotes and some tickers missing (minimal missing list)
   price_not_found:
     blocks:
-      - paragraph: "Some tickers were not found:"
+      - include: symbol_error
       - bullets:
-          items: "{not_found_symbols}"
-      - include: symbol_error    
+          items: "{not_found_symbols}"   
 
   # Unknown input & command
   unknown_input:
