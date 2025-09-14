@@ -142,6 +142,58 @@ async def get_usd_eur(force: bool) -> FxResp:
     cache_put(key, payload)
     return FxResp(**payload)
 
+async def fetch_pair_generic(client: httpx.AsyncClient, base: str, quote: str) -> Tuple[Optional[float], Optional[str]]:
+    """Fetch arbitrary BASE->QUOTE from exchangerate.host. Returns rate (QUOTE per 1 BASE)."""
+    try:
+        url = f"https://api.exchangerate.host/latest?base={base}&symbols={quote}"
+        r = await client.get(url, timeout=HTTP_TIMEOUT)
+        if r.status_code != 200:
+            return None, "exchangerate_http"
+        js = r.json()
+        rate = js.get("rates", {}).get(quote)
+        if rate is None:
+            return None, "exchangerate_no_rate"
+        rate = float(rate)
+        if rate <= 0:
+            return None, "exchangerate_bad_rate"
+        return rate, "exchangerate.host"
+    except Exception:
+        return None, "exchangerate_exception"
+
+async def get_pair(base: str, quote: str, force: bool) -> FxResp:
+    b = base.upper()
+    q = quote.upper()
+    if b == q:
+        # Identity rate
+        now = int(time.time())
+        return FxResp(pair=f"{b}_{q}", rate=1.0, source="identity", fetched_at=now, ttl_sec=FX_TTL_SEC)
+
+    # Prefer dedicated USD_EUR path for better sources
+    if b == "USD" and q == "EUR":
+        return await get_usd_eur(force)
+
+    key = f"fx:{b}_{q}"
+    if not force:
+        cached = cache_get(key, FX_TTL_SEC)
+        if cached:
+            return FxResp(**cached)
+
+    async with httpx.AsyncClient() as client:
+        rate, src = await fetch_pair_generic(client, b, q)
+
+    if rate is None:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch {b}_{q} from providers")
+
+    payload = FxResp(
+        pair=f"{b}_{q}",
+        rate=rate,
+        source=src or "unknown",
+        fetched_at=int(time.time()),
+        ttl_sec=FX_TTL_SEC,
+    ).dict()
+    cache_put(key, payload)
+    return FxResp(**payload)
+
 # ---------------- endpoints ----------------
 @app.get("/health")
 def health():
@@ -159,13 +211,21 @@ async def fx_usd_eur_last_cached():
 async def fx(pair: str = Query(..., description="Format: BASE_QUOTE, e.g. USD_EUR"),
              force: bool = Query(False, description="Force refresh")):
     """
-    Generic endpoint:
+    Generic endpoint supporting arbitrary pairs.
+    Examples:
       /fx?pair=USD_EUR&force=true
-    Only USD_EUR supported for now.
+      /fx?pair=XAU_USD
+      /fx?pair=XAU_EUR
     """
-    if pair.upper() != "USD_EUR":
-        raise HTTPException(status_code=400, detail="Only USD_EUR supported for now")
-    return await get_usd_eur(force=bool(force))
+    p = (pair or "").strip().upper()
+    if "_" not in p:
+        raise HTTPException(status_code=400, detail="pair must be BASE_QUOTE with underscore")
+    base, quote = p.split("_", 1)
+    base = base.strip()
+    quote = quote.strip()
+    if not base or not quote:
+        raise HTTPException(status_code=400, detail="pair must be BASE_QUOTE with underscore")
+    return await get_pair(base, quote, force=bool(force))
 
 @app.get("/fx/cache/{key}")
 def cache_inspect(key: str):

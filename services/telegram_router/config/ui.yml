@@ -37,7 +37,7 @@ snippets:
   session_hint:
     - bullets:
           items:
-            - "You can keep sending tickers without rerunning /price. Session closes after {ttl_min} min or on the next command."
+            - "You can keep sending tickers without rerunning /price. Session closes after 5 minutes or on the next command."
             - "Age shows how fresh the price is: L = Live, P = Prev close, E = End-of-day, D = Delayed, or a 3-letter code or n-a."
             - "Requesting .US from Europe may only return live prices during US market hours. This is a limitation of the data provider."
 
@@ -137,6 +137,13 @@ screens:
       - paragraph: "Example: {example}"
 
   service_error:
+    blocks:
+      - paragraph: "{message}"
+      - paragraph: "Try: {usage}"
+      - paragraph: "Example: {example}"
+
+  # FX-specific errors (e.g., unsupported pair or upstream failure)
+  fx_error:
     blocks:
       - paragraph: "{message}"
       - paragraph: "Try: {usage}"

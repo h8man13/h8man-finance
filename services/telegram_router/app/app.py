@@ -241,7 +241,9 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
         message = err.get("message") or "Internal error"
         usage = spec.help.get("usage", "")
         example = spec.help.get("example", "")
-        pages = render_screen(ui, "service_error", {"message": message, "usage": usage, "example": example})
+        # Use a dedicated FX error screen for /fx to keep copy tailored
+        screen_key = "fx_error" if spec.name == "/fx" else "service_error"
+        pages = render_screen(ui, screen_key, {"message": message, "usage": usage, "example": example})
         return [p for p in pages]
 
     # success mapping by command
