@@ -9,39 +9,44 @@ snippets:
 screens:
   help:
     blocks:
-      - header: "Commands"
+      - paragraph: "Here is a list of available commands. Use them to view or manage your portfolio and check markets."
+      - spacer: { lines: 1 }
       - subheader: "Portfolio"
       - bullets:
           items:
-            - "/portfolio"
-            - "/portfolio_snapshot d|w|m|y"
-            - "/portfolio_summary d|w|m|y"
-            - "/portfolio_breakdown d|w|m|y"
-            - "/portfolio_digest d|w|m|y"
-            - "/portfolio_movers d|w|m|y"
-            - "/allocation`"
-            - "/allocation_edit [etf,stocks,crypto]"
-            - "/rename [symbol] [nickname]"
-            - "/tx [n]`"
-            - "/cash"
-            - "/cash_add [amount]"
+            - "/portfolio or /po - compact snapshot of holdings"
+            - "/portfolio_snapshot d|w|m|y - portfolio time-weighted return snapshots"
+            - "/portfolio_summary d|w|m|y - summarized performance with benchmark comparisons"
+            - "/portfolio_breakdown d|w|m|y - performance by each holding and benchmark"
+            - "/portfolio_digest d|w|m|y - overview of value, benchmarks, movers, allocation"
+            - "/portfolio_movers d|w|m|y - top gainers & losers"
+            - "/allocation - current vs target allocations"
+            - "/allocation_edit `etf,stocks,crypto` - adjust target allocations"
+            - "/rename `symbol` `nickname` - assign or update a nickname for a symbol"
+            - "/tx `n` - show last transactions"
+            - "/cash - current available cash balance"
+            - "/cash_add `amount` - add or remove cash balance manually"
+      - spacer: { lines: 1 }
       - subheader: "Trading"
       - bullets:
           items:
-            - "/buy [qty] [symbol] [price_ccy]"
-            - "/sell [qty] [symbol] [price_ccy]"
-            - "/add [qty] [symbol] [type]"
-            - "/remove [symbol]"
+            - "/buy `qty` `symbol` `price_ccy` - record a buy transaction"
+            - "/sell `qty` `symbol` `price_ccy` - record a sell transaction"
+            - "/add `qty` `symbol` `type` - add or increase a position"
+            - "/remove `symbol` - remove a position fully"
+      - spacer: { lines: 1 }
       - subheader: "Market"
       - bullets:
           items:
-            - "/price [symbols...]"
-            - "/fx [base] [quote]"
+            - "/price or /p `symbols...` - latest quotes for given tickers"
+            - "/fx `base` `quote`"
+      - spacer: { lines: 1 }
       - subheader: "Other"
       - bullets:
           items:
             - "/cancel"
             - "/exit"
+      - spacer: { lines: 1 }
       - paragraph: "Tip: each command shows its input pattern in backticks, so you know exactly how to use it."
 
   price_prompt:
