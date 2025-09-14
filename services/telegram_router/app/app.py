@@ -250,19 +250,15 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
         quotes = data.get("quotes") or []
         # If no quotes, prompt again (keep session open if sticky)
         if not quotes:
-            # keep sticky only if we were already in an interactive /price session
-            keep_sticky = bool(existing and existing.get("cmd") == "/price" and existing.get("sticky"))
-            if keep_sticky:
-                sessions.set(chat_id, {
-                    "chat_id": chat_id,
-                    "cmd": "/price",
-                    "expected": [f["name"] for f in spec.args_schema],
-                    "got": {},
-                    "missing_from": [],
-                    "sticky": True,
-                })
-            else:
-                sessions.clear(chat_id)
+            # Always keep session open on errors (fully invalid input)
+            sessions.set(chat_id, {
+                "chat_id": chat_id,
+                "cmd": "/price",
+                "expected": [f["name"] for f in spec.args_schema],
+                "got": {},
+                "missing_from": [],
+                "sticky": True,
+            })
             # Prefer UI screens showing missing symbols when available.
             # For no-quotes responses, treat all requested as missing.
             ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
@@ -364,8 +360,18 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
         else:
             pages = render_screen(ui, "price_result", data_ui)
         text = pages[0]
-        # Refresh sticky session TTL if applicable
-        if not clear_after:
+        # Session handling: keep session open for any error cases (partial or missing list)
+        if partial or has_missing:
+            sessions.set(chat_id, {
+                "chat_id": chat_id,
+                "cmd": "/price",
+                "expected": [f["name"] for f in spec.args_schema],
+                "got": {},
+                "missing_from": [],
+                "sticky": True,
+            })
+        elif not clear_after:
+            # Already an interactive session -> refresh TTL
             sessions.set(chat_id, {
                 "chat_id": chat_id,
                 "cmd": "/price",
