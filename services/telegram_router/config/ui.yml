@@ -33,7 +33,7 @@
 snippets:
   symbol_error: 
     - paragraph: "⚠️ Some tickers were not found! Fix them or send new ones without rerunning /price."
-
+    
   session_hint:
     - bullets:
           items:
@@ -81,7 +81,11 @@ screens:
   price_prompt:
     blocks:
       - header: "What tickers should I check?"
-      - include: session_hint
+      - bullets:
+          items:
+            - "Enter 1 to 10 tickers, separated by spaces."
+            - "Example: /price NVDA GOOG ZAL.DE"
+            - "Tickers default to .US (e.g. NVDA). For other markets, add a suffix like TSLA.XETRA to ensure correct currency conversion."
 
   # /price - quotes returned (non-partial)
   price_result:
@@ -89,11 +93,7 @@ screens:
       - table:
           rows: "{table_rows}"
       - paragraph: "💡 Keep in mind:"    
-      - bullets:
-          items:
-            - session_hint
-            - age_note
-            - provider_note_us
+      - include: session_hint
 
   # /price - quotes returned & partial with explicit missing list
   price_partial_error:
@@ -102,7 +102,8 @@ screens:
           rows: "{table_rows}"
       - include: symbol_error
       - bullets:
-          items: "{not_found_symbols}"   
+          items: "{not_found_symbols}"
+      
       
   # /price - quotes returned & partial without a list; show short note
   price_partial_note:
