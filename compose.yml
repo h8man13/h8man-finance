@@ -81,5 +81,39 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  portfolio_core:
+    build:
+      context: ./services/portfolio_core
+    image: portfolio_core:latest
+    env_file:
+      - ./services/portfolio_core/.env
+    ports:
+      - "8002:8000"
+    volumes:
+      - portfolio_core_data:/app/data
+    depends_on:
+      market_data:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python - <<'PY'\nimport urllib.request,sys\nurllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)\nsys.exit(0)\nPY"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  sqliteweb_portfolio:
+    image: coleifer/sqlite-web:latest
+    ports:
+      - "127.0.0.1:8083:8080"
+    volumes:
+      - portfolio_core_data:/data
+    command: ["sh","-c","test -f /data/portfolio.db && sqlite_web -H 0.0.0.0 /data/portfolio.db || sqlite_web -H 0.0.0.0 /data"]
+    depends_on:
+      portfolio_core:
+        condition: service_started
+    restart: unless-stopped
+
 volumes:
   market_data_data:
+  portfolio_core_data:
