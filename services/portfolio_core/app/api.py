@@ -602,3 +602,167 @@ router.add_api_route("/po_summary", get_portfolio_summary, methods=["GET"])
 router.add_api_route("/po_breakdown", get_portfolio_breakdown, methods=["GET"])
 router.add_api_route("/po_digest", get_portfolio_digest, methods=["GET"])
 router.add_api_route("/po_movers", get_portfolio_movers, methods=["GET"])
+
+
+# Admin endpoints for snapshot management
+@router.post("/admin/snapshots/run", response_model=OkEnvelope | ErrEnvelope)
+async def run_snapshots(
+    user_id: Optional[int] = Query(None, description="Run for specific user, or all users if None"),
+    conn = Depends(db_dep),
+):
+    """Run daily portfolio snapshots (admin endpoint for cron job)."""
+    try:
+        from .services.analytics import AnalyticsService
+        from .models import UserContext
+
+        if user_id:
+            # Run for specific user
+            uc = UserContext(user_id=user_id, first_name="Admin", last_name="Run")
+            analytics = AnalyticsService(conn, uc)
+            snapshot = await analytics.run_daily_snapshot()
+            return ok({"snapshot": snapshot, "user_id": user_id})
+        else:
+            # Run for all users with positions
+            cursor = await conn.execute("""
+                SELECT DISTINCT user_id
+                FROM positions
+                WHERE qty > 0
+            """)
+            user_ids = [row[0] for row in await cursor.fetchall()]
+
+            results = []
+            for uid in user_ids:
+                try:
+                    uc = UserContext(user_id=uid, first_name="Admin", last_name="Run")
+                    analytics = AnalyticsService(conn, uc)
+                    snapshot = await analytics.run_daily_snapshot()
+                    results.append({"user_id": uid, "snapshot": snapshot, "success": True})
+                except Exception as e:
+                    results.append({"user_id": uid, "error": str(e), "success": False})
+
+            return ok({"results": results, "processed_users": len(user_ids)})
+
+    except Exception as e:
+        return err("INTERNAL", f"Snapshot run failed: {str(e)}", "portfolio_core")
+
+
+@router.get("/admin/snapshots/status", response_model=OkEnvelope | ErrEnvelope)
+async def get_snapshots_status(
+    user_id: Optional[int] = Query(None, description="Get status for specific user, or all users if None"),
+    conn = Depends(db_dep),
+):
+    """Get snapshot status and statistics (admin endpoint)."""
+    try:
+        if user_id:
+            # Get status for specific user
+            cursor = await conn.execute("""
+                SELECT
+                    date(snapshot_date) as date,
+                    value_eur,
+                    created_at
+                FROM portfolio_snapshots
+                WHERE user_id = ?
+                ORDER BY snapshot_date DESC
+                LIMIT 10
+            """, (user_id,))
+            snapshots = []
+            for row in await cursor.fetchall():
+                snapshots.append({
+                    "date": row[0],
+                    "value_eur": float(row[1]),
+                    "created_at": row[2]
+                })
+
+            return ok({"user_id": user_id, "recent_snapshots": snapshots})
+        else:
+            # Get overview for all users
+            cursor = await conn.execute("""
+                SELECT
+                    user_id,
+                    COUNT(*) as snapshot_count,
+                    MAX(date(snapshot_date)) as latest_date,
+                    MIN(date(snapshot_date)) as earliest_date,
+                    SUM(value_eur) as total_value
+                FROM portfolio_snapshots
+                GROUP BY user_id
+                ORDER BY latest_date DESC
+            """)
+            users = []
+            for row in await cursor.fetchall():
+                users.append({
+                    "user_id": row[0],
+                    "snapshot_count": row[1],
+                    "latest_date": row[2],
+                    "earliest_date": row[3],
+                    "total_value": float(row[4]) if row[4] else 0
+                })
+
+            return ok({"users": users, "total_users": len(users)})
+
+    except Exception as e:
+        return err("INTERNAL", f"Status check failed: {str(e)}", "portfolio_core")
+
+
+@router.delete("/admin/snapshots/cleanup", response_model=OkEnvelope | ErrEnvelope)
+async def cleanup_snapshots(
+    days_to_keep: int = Query(90, description="Number of days to keep (default 90)"),
+    user_id: Optional[int] = Query(None, description="Clean for specific user, or all users if None"),
+    conn = Depends(db_dep),
+):
+    """Clean up old snapshots (admin endpoint)."""
+    try:
+        from datetime import datetime, timedelta
+
+        cutoff_date = datetime.now() - timedelta(days=days_to_keep)
+
+        if user_id:
+            # Clean for specific user
+            cursor = await conn.execute("""
+                DELETE FROM portfolio_snapshots
+                WHERE user_id = ? AND snapshot_date < ?
+            """, (user_id, cutoff_date))
+            deleted_count = cursor.rowcount
+            return ok({"user_id": user_id, "deleted_snapshots": deleted_count, "cutoff_date": cutoff_date.isoformat()})
+        else:
+            # Clean for all users
+            cursor = await conn.execute("""
+                DELETE FROM portfolio_snapshots
+                WHERE snapshot_date < ?
+            """, (cutoff_date,))
+            deleted_count = cursor.rowcount
+            return ok({"deleted_snapshots": deleted_count, "cutoff_date": cutoff_date.isoformat()})
+
+    except Exception as e:
+        return err("INTERNAL", f"Cleanup failed: {str(e)}", "portfolio_core")
+
+
+@router.get("/admin/health", response_model=OkEnvelope | ErrEnvelope)
+async def admin_health_check(conn = Depends(db_dep)):
+    """Admin health check with service dependencies."""
+    try:
+        from .adapters import fx_client, market_data_client
+
+        # Check database
+        cursor = await conn.execute("SELECT COUNT(*) FROM users")
+        user_count = (await cursor.fetchone())[0]
+
+        # Check external services
+        fx_healthy = await fx_client.health_check()
+        market_data_healthy = await market_data_client.health_check()
+
+        # Get cache stats
+        fx_cache_stats = getattr(fx_client, 'cache', {})
+        market_cache_stats = market_data_client.get_cache_stats()
+
+        return ok({
+            "database": {"healthy": True, "user_count": user_count},
+            "fx_service": {"healthy": fx_healthy},
+            "market_data_service": {"healthy": market_data_healthy},
+            "cache_stats": {
+                "fx_cache_entries": len(fx_cache_stats),
+                "market_data_cache": market_cache_stats
+            }
+        })
+
+    except Exception as e:
+        return err("INTERNAL", f"Health check failed: {str(e)}", "portfolio_core")

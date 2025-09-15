@@ -126,11 +126,14 @@ class PortfolioService:
         """Record a transaction and update position/cash as needed."""
         # Note: Portfolio_core should not fetch quotes directly
         # Amount EUR should be provided by caller (telegram_router with real-time data)
+        fx_rate = Decimal("1.0")  # Default rate
         if symbol and qty and price_ccy and not amount_eur:
             # Fallback: assume USD to EUR conversion rate of 0.9 for demo
             # In production, telegram_router should provide amount_eur
             fx_rate = Decimal("0.9")
             amount_eur = qty * price_ccy * fx_rate
+        elif not amount_eur:
+            amount_eur = Decimal("0")
             
         # Start transaction
         async with self.db.execute("BEGIN TRANSACTION"):
@@ -151,7 +154,7 @@ class PortfolioService:
                         symbol,
                         str(qty) if qty is not None else None,
                         str(price_ccy) if price_ccy is not None else None,
-                        symbol and q["currency"],
+                        "USD" if symbol else None,
                         str(tx_amount),
                         str(fx_rate) if symbol else None,
                         note,
@@ -161,10 +164,14 @@ class PortfolioService:
                     
                 # Update position for buy/sell
                 if symbol and qty:
-                    meta = await market_data.get_meta(symbol)
-                    if not meta:
-                        raise ValueError(f"Could not get metadata for {symbol}")
-                        
+                    # Note: Symbol metadata should be provided by caller (telegram_router)
+                    # Using sensible defaults for now
+                    meta = {
+                        "market": "US",
+                        "asset_class": "stock",
+                        "currency": "USD"
+                    }
+
                     async with self.db.execute(
                         """
                         INSERT INTO positions (

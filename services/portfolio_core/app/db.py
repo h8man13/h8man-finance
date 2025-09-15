@@ -3,9 +3,29 @@ Core database models using SQLite with aiosqlite for async support.
 """
 from typing import Optional, Dict, Any
 from datetime import datetime
+from decimal import Decimal
 import json
 import sqlite3
 import aiosqlite
+
+
+# Decimal adapters for SQLite
+def adapt_decimal(d):
+    """Convert Decimal to string for SQLite storage."""
+    return str(d)
+
+
+def convert_decimal(s):
+    """Convert string back to Decimal from SQLite."""
+    if isinstance(s, bytes):
+        s = s.decode('utf-8')
+    return Decimal(s)
+
+
+# Register adapters
+sqlite3.register_adapter(Decimal, adapt_decimal)
+sqlite3.register_converter("DECIMAL", convert_decimal)
+sqlite3.register_converter("NUMERIC", convert_decimal)
 
 
 SCHEMA = """
@@ -156,21 +176,23 @@ ALTER TABLE cash_balances_new RENAME TO cash_balances;
 """
 
 
-async def init_db() -> None:
+async def init_db(db_path: Optional[str] = None) -> None:
     """Initialize database schema."""
     from .settings import settings
 
-    async with aiosqlite.connect(settings.DB_PATH) as db:
+    path = db_path or settings.DB_PATH
+    async with aiosqlite.connect(path) as db:
         await db.executescript(SCHEMA)
         await db.commit()
 
 
-async def open_db():
+async def open_db(db_path: Optional[str] = None):
     """Open database connection with Decimal support."""
     from .settings import settings
-    
+
+    path = db_path or settings.DB_PATH
     # aiosqlite uses sqlite3 under the hood, so the adapters will be used
-    db = await aiosqlite.connect(settings.DB_PATH, 
+    db = await aiosqlite.connect(path,
                                 detect_types=sqlite3.PARSE_DECLTYPES)
     db.row_factory = aiosqlite.Row
     return db

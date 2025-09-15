@@ -16,8 +16,8 @@ class Settings(BaseSettings):
     PORT: int = 8000
 
     # External services
-    MARKET_DATA_URL: str = "http://market_data:8000"
-    FX_URL: str = "http://fx:8000"
+    MARKET_DATA_BASE_URL: str = "http://market_data:8000"
+    FX_BASE_URL: str = "http://fx:8000"
 
     # Database
     DB_PATH: str = "/app/data/portfolio.db"
@@ -29,14 +29,28 @@ class Settings(BaseSettings):
     # CORS (CSV list for the Mini App)
     CORS_ALLOW_ORIGINS: Optional[str] = None
     CORS_ALLOW_CREDENTIALS: bool = False
-    
+
     # Timezone (for all date/time calculations)
     TZ: str = "Europe/Berlin"
-    
+
+    # Base Currency
+    BASE_CURRENCY: str = "EUR"
+
     # Target allocation defaults
     DEFAULT_ETF_TARGET: int = 60
     DEFAULT_STOCK_TARGET: int = 30
     DEFAULT_CRYPTO_TARGET: int = 10
+
+    # Adapter Configuration
+    ADAPTER_TIMEOUT_SEC: float = 5.0
+    ADAPTER_RETRY_COUNT: int = 1
+    FX_CACHE_TTL_SEC: int = 300  # 5 minutes
+    QUOTES_CACHE_TTL_SEC: int = 90  # 90 seconds
+    META_CACHE_TTL_SEC: int = 3600  # 1 hour
+
+    # Snapshot Configuration
+    SNAPSHOT_TIMEZONE: str = "Europe/Berlin"
+    ENABLE_SCHEDULER: bool = False  # Use sidecar cron by default
 
     # Model configuration
     model_config = SettingsConfigDict(

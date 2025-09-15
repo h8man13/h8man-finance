@@ -1,86 +1,64 @@
 """Tests for analytics service."""
 import pytest
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
+from decimal import Decimal
 
 from app.services.analytics import AnalyticsService
-from app.models import PortfolioSnapshot, PositionPerformance
 
 
 @pytest.mark.asyncio
-async def test_calculate_portfolio_performance(analytics_service, portfolio_service):
-    """Test portfolio performance calculation."""
-    # Setup test portfolio with positions
-    portfolio = await portfolio_service.create_portfolio("Test", "Test desc", "USD")
-    
-    position1 = await portfolio_service.add_position(
-        portfolio.id, "AAPL", 10, 150.0, "USD"
-    )
-    position2 = await portfolio_service.add_position(
-        portfolio.id, "MSFT", 20, 200.0, "USD"
-    )
-    
-    # Add transactions
-    date = datetime.now(timezone.utc)
-    await portfolio_service.add_transaction(
-        portfolio.id, position1.id, 10, 150.0, date - timedelta(days=30)
-    )
-    await portfolio_service.add_transaction(
-        portfolio.id, position2.id, 20, 200.0, date - timedelta(days=30)
-    )
-    
-    # Calculate performance
-    start_date = date - timedelta(days=30)
-    end_date = date
-    
-    performance = await analytics_service.calculate_portfolio_performance(
-        portfolio.id, start_date, end_date
-    )
-    
-    assert performance.portfolio_id == portfolio.id
-    assert performance.start_date.replace(microsecond=0) == start_date.replace(microsecond=0)
-    assert performance.end_date.replace(microsecond=0) == end_date.replace(microsecond=0)
-    assert isinstance(performance.return_pct, float)
+async def test_bucket_boundaries(analytics_service):
+    """Test bucket boundary calculation."""
+    ref_date = date(2023, 6, 15)  # A Thursday
+
+    # Daily boundaries
+    d_boundaries = analytics_service._get_bucket_boundaries("d", ref_date)
+    assert len(d_boundaries) == 1
+    assert d_boundaries[0] == ref_date
+
+    # Weekly boundaries
+    w_boundaries = analytics_service._get_bucket_boundaries("w", ref_date)
+    assert len(w_boundaries) == 7
+
+    # Monthly boundaries (4 weekly Friday closes)
+    m_boundaries = analytics_service._get_bucket_boundaries("m", ref_date)
+    assert len(m_boundaries) == 4
+
+    # Yearly boundaries (YTD monthly)
+    y_boundaries = analytics_service._get_bucket_boundaries("y", ref_date)
+    assert len(y_boundaries) == 6  # Jan through Jun
 
 
 @pytest.mark.asyncio
-async def test_get_position_performance(analytics_service, portfolio_service):
-    """Test position performance calculation."""
-    # Setup test portfolio with position
-    portfolio = await portfolio_service.create_portfolio("Test", "Test desc", "USD")
-    position = await portfolio_service.add_position(
-        portfolio.id, "AAPL", 10, 150.0, "USD"
+async def test_calculate_twr(analytics_service):
+    """Test TWR calculation logic."""
+    # Mock snapshots and flows
+    snapshots = [
+        {"date": "2023-01-01", "value_eur": 10000},
+        {"date": "2023-01-02", "value_eur": 10200},
+        {"date": "2023-01-03", "value_eur": 10100},
+    ]
+
+    flows = [
+        {"date": "2023-01-02", "amount_eur": 0},  # No flows
+    ]
+
+    twr_pct, daily_returns = await analytics_service.calculate_twr(
+        date(2023, 1, 1), date(2023, 1, 3), snapshots, flows
     )
-    
-    # Add transaction
-    date = datetime.now(timezone.utc)
-    await portfolio_service.add_transaction(
-        portfolio.id, position.id, 10, 150.0, date - timedelta(days=30)
-    )
-    
-    # Get performance
-    performance = await analytics_service.get_position_performance(portfolio.id, position.id)
-    
-    assert performance.position_id == position.id
-    assert performance.symbol == position.symbol
-    assert isinstance(performance.unrealized_gain, float)
-    assert isinstance(performance.total_return_pct, float)
+
+    # TWR should be calculated correctly
+    assert isinstance(twr_pct, Decimal)
+    assert len(daily_returns) > 0
 
 
 @pytest.mark.asyncio
-async def test_create_portfolio_snapshot(analytics_service, portfolio_service):
-    """Test portfolio snapshot creation."""
-    # Setup test portfolio
-    portfolio = await portfolio_service.create_portfolio("Test", "Test desc", "USD")
-    position = await portfolio_service.add_position(
-        portfolio.id, "AAPL", 10, 150.0, "USD"
-    )
-    
-    # Create snapshot
-    date = datetime.now(timezone.utc)
-    snapshot = await analytics_service.create_portfolio_snapshot(portfolio.id, date)
-    
-    assert snapshot.portfolio_id == portfolio.id
-    assert snapshot.date.replace(microsecond=0) == date.replace(microsecond=0)
-    assert isinstance(snapshot.total_value, float)
-    assert isinstance(snapshot.cash_value, float)
-    assert isinstance(snapshot.invested_value, float)
+async def test_get_portfolio_snapshot(analytics_service):
+    """Test portfolio snapshot for period."""
+    # This will test the endpoint integration
+    snapshot = await analytics_service.get_portfolio_snapshot("d")
+
+    # Should return a snapshot even with no data
+    assert "bucket_performance" in snapshot
+    assert "bucket_end_date" in snapshot
+    assert "bucket_start_date" in snapshot

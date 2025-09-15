@@ -1,0 +1,36 @@
+# Dockerfile for portfolio snapshot cron sidecar
+FROM python:3.11-slim
+
+# Install cron and required packages
+RUN apt-get update && \
+    apt-get install -y cron && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create app directory
+WORKDIR /app
+
+# Copy requirements and install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the cron script
+COPY scripts/snapshot_cron.py /app/snapshot_cron.py
+RUN chmod +x /app/snapshot_cron.py
+
+# Setup cron job (runs at 6 AM UTC daily)
+RUN echo "0 6 * * * cd /app && python snapshot_cron.py --host portfolio_core --port 8000 >> /var/log/snapshot_cron.log 2>&1" > /etc/cron.d/snapshot-cron && \
+    chmod 0644 /etc/cron.d/snapshot-cron && \
+    crontab /etc/cron.d/snapshot-cron
+
+# Create log file
+RUN touch /var/log/snapshot_cron.log
+
+# Environment variables
+ENV PORTFOLIO_CORE_HOST=portfolio_core
+ENV PORTFOLIO_CORE_PORT=8000
+ENV CLEANUP_DAYS=90
+ENV LOG_LEVEL=INFO
+
+# Start cron daemon and tail logs
+CMD ["sh", "-c", "cron && tail -f /var/log/snapshot_cron.log"]

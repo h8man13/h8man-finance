@@ -62,7 +62,7 @@
         {"name": "symbol", "type": "string", "required": true},
         {"name": "type", "type": "enum", "values": ["etf", "stock", "crypto"], "required": true}
       ],
-      "dispatch": {"service": "portfolio_core", "method": "POST", "path": "/positions/add", "args_map": {"qty": "qty", "symbol": "symbol", "type": "type"}},
+      "dispatch": {"service": "portfolio_core", "method": "POST", "path": "/add", "args_map": {"qty": "qty", "symbol": "symbol", "type": "type"}},
       "help": {"usage": "[qty] [symbol] [type]"}
     },
     {
@@ -72,7 +72,7 @@
       "args_schema": [
         {"name": "symbol", "type": "string", "required": true}
       ],
-      "dispatch": {"service": "portfolio_core", "method": "POST", "path": "/positions/remove", "args_map": {"symbol": "symbol"}},
+      "dispatch": {"service": "portfolio_core", "method": "POST", "path": "/remove", "args_map": {"symbol": "symbol"}},
       "help": {"usage": "[symbol]"}
     },
     {
@@ -90,7 +90,7 @@
       "args_schema": [
         {"name": "amount", "type": "number", "required": true}
       ],
-      "dispatch": {"service": "portfolio_core", "method": "POST", "path": "/cash/add", "args_map": {"amount": "amount"}},
+      "dispatch": {"service": "portfolio_core", "method": "POST", "path": "/cash_add", "args_map": {"amount": "amount"}},
       "help": {"usage": "[amount]"}
     },
     {
@@ -144,7 +144,7 @@
       "args_schema": [
         {"name": "period", "type": "enum", "values": ["d", "w", "m", "y"], "required": false, "default": "d"}
       ],
-      "dispatch": {"service": "portfolio_core", "method": "GET", "path": "/portfolio/snapshot", "args_map": {"period": "period"}},
+      "dispatch": {"service": "portfolio_core", "method": "GET", "path": "/portfolio_snapshot", "args_map": {"period": "period"}},
       "help": {"usage": "[period=d|w|m|y]"}
     },
     {
@@ -154,7 +154,7 @@
       "args_schema": [
         {"name": "period", "type": "enum", "values": ["d", "w", "m", "y"], "required": false, "default": "m"}
       ],
-      "dispatch": {"service": "portfolio_core", "method": "GET", "path": "/portfolio/summary", "args_map": {"period": "period"}},
+      "dispatch": {"service": "portfolio_core", "method": "GET", "path": "/portfolio_summary", "args_map": {"period": "period"}},
       "help": {"usage": "[period=d|w|m|y]"}
     },
     {
@@ -164,7 +164,7 @@
       "args_schema": [
         {"name": "period", "type": "enum", "values": ["d", "w", "m", "y"], "required": false, "default": "y"}
       ],
-      "dispatch": {"service": "portfolio_core", "method": "GET", "path": "/portfolio/breakdown", "args_map": {"period": "period"}},
+      "dispatch": {"service": "portfolio_core", "method": "GET", "path": "/portfolio_breakdown", "args_map": {"period": "period"}},
       "help": {"usage": "[period=d|w|m|y]"}
     },
     {
@@ -174,7 +174,7 @@
       "args_schema": [
         {"name": "period", "type": "enum", "values": ["d", "w", "m", "y"], "required": false, "default": "m"}
       ],
-      "dispatch": {"service": "portfolio_core", "method": "GET", "path": "/portfolio/digest", "args_map": {"period": "period"}},
+      "dispatch": {"service": "portfolio_core", "method": "GET", "path": "/portfolio_digest", "args_map": {"period": "period"}},
       "help": {"usage": "[period=d|w|m|y]"}
     },
     {
@@ -192,7 +192,7 @@
       "args_schema": [
         {"name": "weights", "type": "percent", "required": true, "many": true, "min_items": 1, "max_items": 3}
       ],
-      "dispatch": {"service": "portfolio_core", "method": "POST", "path": "/allocation/edit", "args_map": {"weights": "weights"}},
+      "dispatch": {"service": "portfolio_core", "method": "POST", "path": "/allocation_edit", "args_map": {"weights": "weights"}},
       "help": {"usage": "[etf,stocks,crypto]"}
     },
     {
@@ -202,7 +202,7 @@
       "args_schema": [
         {"name": "period", "type": "enum", "values": ["d", "w", "m", "y"], "required": false, "default": "d"}
       ],
-      "dispatch": {"service": "portfolio_core", "method": "GET", "path": "/portfolio/movers", "args_map": {"period": "period"}},
+      "dispatch": {"service": "portfolio_core", "method": "GET", "path": "/portfolio_movers", "args_map": {"period": "period"}},
       "help": {"usage": "[period=d|w|m|y]"}
     },
     {
@@ -213,7 +213,7 @@
         {"name": "scope", "type": "string", "required": true},
         {"name": "delta_pct", "type": "percent", "required": true}
       ],
-      "dispatch": {"service": "portfolio_core", "method": "GET", "path": "/portfolio/whatif", "args_map": {"scope": "scope", "delta_pct": "delta_pct"}},
+      "dispatch": {"service": "portfolio_core", "method": "GET", "path": "/po_if", "args_map": {"scope": "scope", "delta_pct": "delta_pct"}},
       "help": {"usage": "[symbol|pick=stocks|etf|crypto] [+x%|-x%]"}
     },
     {
@@ -224,7 +224,7 @@
         {"name": "symbol", "type": "string", "required": true},
         {"name": "nickname", "type": "string", "required": true}
       ],
-      "dispatch": {"service": "portfolio_core", "method": "POST", "path": "/symbols/rename", "args_map": {"symbol": "symbol", "nickname": "nickname"}},
+      "dispatch": {"service": "portfolio_core", "method": "POST", "path": "/rename", "args_map": {"symbol": "symbol", "nickname": "nickname"}},
       "help": {"usage": "[symbol] [nickname]"}
     }
   ]

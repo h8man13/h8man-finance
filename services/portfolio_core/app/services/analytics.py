@@ -4,16 +4,24 @@ Portfolio analytics and performance calculations with proper TWR implementation.
 from typing import Dict, Any, List, Tuple, Optional
 from datetime import datetime, date, timezone, timedelta
 from decimal import Decimal, ROUND_HALF_UP
-import zoneinfo
 import aiosqlite
 from dateutil.relativedelta import relativedelta
 import calendar
 
+# Try to import zoneinfo, fallback to pytz for older Python versions
+try:
+    import zoneinfo
+    TZ = zoneinfo.ZoneInfo("Europe/Berlin")
+except ImportError:
+    try:
+        import pytz
+        TZ = pytz.timezone("Europe/Berlin")
+    except ImportError:
+        # Last resort: use timezone offset (CET is UTC+1, CEST is UTC+2)
+        TZ = timezone(timedelta(hours=1))  # Simplified, doesn't handle DST
+
 from ..models import Position, Transaction, Snapshot, UserContext
 # Market data client removed - portfolio_core should not directly call market_data
-
-
-TZ = zoneinfo.ZoneInfo("Europe/Berlin")
 
 
 class AnalyticsService:
@@ -361,4 +369,66 @@ class AnalyticsService:
         return {
             "current": {"etf_pct": 60, "stock_pct": 30, "crypto_pct": 10},
             "previous": {"etf_pct": 59, "stock_pct": 31, "crypto_pct": 10}
+        }
+
+    async def run_daily_snapshot(self, snapshot_date: Optional[date] = None) -> Dict[str, Any]:
+        """
+        Run daily portfolio snapshot for maintenance (called by admin endpoint).
+
+        Args:
+            snapshot_date: Date for snapshot (defaults to today in Berlin timezone)
+
+        Returns:
+            Snapshot data
+        """
+        if snapshot_date is None:
+            snapshot_date = datetime.now(TZ).date()
+
+        # Get current portfolio state
+        from .portfolio import PortfolioService
+        portfolio_service = PortfolioService(self.db, self.user)
+
+        portfolio = await portfolio_service.get_portfolio_snapshot()
+        cash_balance = await portfolio_service.get_cash_balance()
+
+        # Calculate total portfolio value
+        total_value = cash_balance
+        positions_value = Decimal("0")
+
+        for pos in portfolio.get("positions", []):
+            qty = Decimal(str(pos.get("qty", 0)))
+            avg_cost_eur = Decimal(str(pos.get("avg_cost_eur", 0)))
+            position_value = qty * avg_cost_eur
+            positions_value += position_value
+            total_value += position_value
+
+        # Create snapshot entry
+        snapshot_datetime = self._normalize_to_berlin_tz(
+            datetime.combine(snapshot_date, datetime.min.time())
+        )
+
+        # Insert snapshot into database
+        async with self.db.execute(
+            """
+            INSERT OR REPLACE INTO portfolio_snapshots
+            (user_id, snapshot_date, value_eur, cash_eur, positions_eur, created_at)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """,
+            (
+                self.user.user_id,
+                snapshot_datetime.isoformat(),
+                str(total_value),
+                str(cash_balance),
+                str(positions_value)
+            )
+        ):
+            await self.db.commit()
+
+        return {
+            "user_id": self.user.user_id,
+            "snapshot_date": snapshot_date.isoformat(),
+            "total_value_eur": total_value,
+            "cash_eur": cash_balance,
+            "positions_eur": positions_value,
+            "positions_count": len(portfolio.get("positions", []))
         }

@@ -1,0 +1,52 @@
+# Docker Compose for portfolio_core with snapshot cron sidecar
+version: '3.8'
+
+services:
+  portfolio_core:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - ENV=prod
+      - DB_PATH=/app/data/portfolio.db
+      - MARKET_DATA_BASE_URL=http://market_data:8000
+      - FX_BASE_URL=http://fx:8000
+      - ENABLE_SCHEDULER=false  # Use sidecar cron instead
+    volumes:
+      - portfolio_data:/app/data
+    networks:
+      - portfolio_network
+    restart: unless-stopped
+
+  portfolio_cron:
+    build:
+      context: .
+      dockerfile: scripts/Dockerfile.cron
+    depends_on:
+      - portfolio_core
+    environment:
+      - PORTFOLIO_CORE_HOST=portfolio_core
+      - PORTFOLIO_CORE_PORT=8000
+      - CLEANUP_DAYS=90
+      - LOG_LEVEL=INFO
+    networks:
+      - portfolio_network
+    restart: unless-stopped
+    # Run manual maintenance once on startup (after 30 seconds)
+    command: >
+      sh -c "
+        sleep 30 &&
+        python snapshot_cron.py --dry-run &&
+        cron &&
+        tail -f /var/log/snapshot_cron.log
+      "
+
+volumes:
+  portfolio_data:
+    driver: local
+
+networks:
+  portfolio_network:
+    driver: bridge

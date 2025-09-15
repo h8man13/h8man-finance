@@ -13,133 +13,98 @@ def client():
 
 
 @pytest.fixture
-def mock_auth_header():
-    """Mock auth header for test user."""
-    return {"Authorization": "Bearer test_token"}
-
-
-def test_create_portfolio(client, mock_auth_header):
-    """Test portfolio creation endpoint."""
-    portfolio_data = {
-        "name": "Test Portfolio",
-        "description": "Test description",
-        "base_currency": "USD"
+def mock_user_params():
+    """Mock user parameters for requests."""
+    return {
+        "user_id": 12345,
+        "first_name": "Test",
+        "last_name": "User",
+        "username": "testuser",
+        "language_code": "en"
     }
-    
-    response = client.post("/portfolios/", json=portfolio_data, headers=mock_auth_header)
-    
+
+
+def test_health_endpoint(client):
+    """Test health check endpoint."""
+    response = client.get("/health")
     assert response.status_code == 200
     data = response.json()
-    assert data["name"] == portfolio_data["name"]
-    assert data["description"] == portfolio_data["description"]
-    assert data["base_currency"] == portfolio_data["base_currency"]
+    assert data["ok"] is True
+    assert data["data"]["status"] == "healthy"
 
 
-def test_get_portfolios(client, mock_auth_header):
-    """Test getting user portfolios endpoint."""
-    # Create test portfolios first
-    portfolio_data = [
-        {"name": "Portfolio 1", "description": "Test 1", "base_currency": "USD"},
-        {"name": "Portfolio 2", "description": "Test 2", "base_currency": "EUR"}
-    ]
-    
-    for data in portfolio_data:
-        client.post("/portfolios/", json=data, headers=mock_auth_header)
-    
-    # Get portfolios
-    response = client.get("/portfolios/", headers=mock_auth_header)
-    
+def test_portfolio_endpoint(client, mock_user_params):
+    """Test /portfolio endpoint."""
+    response = client.get("/portfolio", params=mock_user_params)
     assert response.status_code == 200
     data = response.json()
-    assert len(data) == len(portfolio_data)
-    for portfolio, expected in zip(data, portfolio_data):
-        assert portfolio["name"] == expected["name"]
+    assert data["ok"] is True
+    assert "portfolio" in data["data"]
 
 
-def test_add_position(client, mock_auth_header):
-    """Test adding position endpoint."""
-    # Create portfolio first
-    portfolio = client.post(
-        "/portfolios/",
-        json={"name": "Test", "description": "Test", "base_currency": "USD"},
-        headers=mock_auth_header
-    ).json()
-    
-    # Add position
-    position_data = {
-        "symbol": "AAPL",
-        "quantity": 10,
-        "avg_price": 150.0,
-        "currency": "USD"
-    }
-    
-    response = client.post(
-        f"/portfolios/{portfolio['id']}/positions/",
-        json=position_data,
-        headers=mock_auth_header
-    )
-    
+def test_cash_endpoint(client, mock_user_params):
+    """Test /cash endpoint."""
+    response = client.get("/cash", params=mock_user_params)
     assert response.status_code == 200
     data = response.json()
-    assert data["symbol"] == position_data["symbol"]
-    assert data["quantity"] == position_data["quantity"]
+    assert data["ok"] is True
+    assert "cash_balance" in data["data"]
 
 
-def test_add_transaction(client, mock_auth_header):
-    """Test adding transaction endpoint."""
-    # Create portfolio and position first
-    portfolio = client.post(
-        "/portfolios/",
-        json={"name": "Test", "description": "Test", "base_currency": "USD"},
-        headers=mock_auth_header
-    ).json()
-    
-    position = client.post(
-        f"/portfolios/{portfolio['id']}/positions/",
-        json={"symbol": "AAPL", "quantity": 0, "avg_price": 0, "currency": "USD"},
-        headers=mock_auth_header
-    ).json()
-    
-    # Add transaction
-    transaction_data = {
-        "quantity": 5,
-        "price": 150.0,
-        "date": datetime.now(timezone.utc).isoformat()
-    }
-    
-    response = client.post(
-        f"/portfolios/{portfolio['id']}/positions/{position['id']}/transactions/",
-        json=transaction_data,
-        headers=mock_auth_header
-    )
-    
+def test_add_position_endpoint(client, mock_user_params):
+    """Test /add endpoint."""
+    params = mock_user_params.copy()
+    params.update({
+        "qty": 10,
+        "symbol": "AAPL.US",
+        "type": "stock"
+    })
+
+    response = client.post("/add", params=params)
     assert response.status_code == 200
     data = response.json()
-    assert data["quantity"] == transaction_data["quantity"]
-    assert data["price"] == transaction_data["price"]
+    assert data["ok"] is True
+    assert "position" in data["data"]
 
 
-def test_get_portfolio_performance(client, mock_auth_header):
-    """Test getting portfolio performance endpoint."""
-    # Create portfolio with position and transaction
-    portfolio = client.post(
-        "/portfolios/",
-        json={"name": "Test", "description": "Test", "base_currency": "USD"},
-        headers=mock_auth_header
-    ).json()
-    
-    # Get performance
-    params = {
-        "start_date": (datetime.now(timezone.utc).isoformat()),
-        "end_date": (datetime.now(timezone.utc).isoformat())
-    }
-    
-    response = client.get(
-        f"/portfolios/{portfolio['id']}/performance/",
-        params=params,
-        headers=mock_auth_header
-    )
-    
+def test_transactions_endpoint(client, mock_user_params):
+    """Test /tx endpoint."""
+    params = mock_user_params.copy()
+    params["limit"] = 5
+
+    response = client.get("/tx", params=params)
     assert response.status_code == 200
     data = response.json()
-    assert "return_pct" in data
+    assert data["ok"] is True
+    assert "transactions" in data["data"]
+
+
+def test_allocation_endpoint(client, mock_user_params):
+    """Test /allocation endpoint."""
+    response = client.get("/allocation", params=mock_user_params)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert "allocation" in data["data"]
+
+
+def test_portfolio_snapshot_endpoint(client, mock_user_params):
+    """Test /portfolio_snapshot endpoint."""
+    params = mock_user_params.copy()
+    params["period"] = "d"
+
+    response = client.get("/portfolio_snapshot", params=params)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert "snapshot" in data["data"]
+
+
+def test_help_endpoint(client, mock_user_params):
+    """Test /help endpoint."""
+    response = client.get("/help", params=mock_user_params)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert "help" in data["data"]
+    assert isinstance(data["data"]["help"], list)

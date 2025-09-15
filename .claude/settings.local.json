@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(python -m pytest tests/ -v --tb=short)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(python test:*)"
     ],
     "deny": [],
     "ask": []
