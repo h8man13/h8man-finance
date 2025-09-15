@@ -277,7 +277,7 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
             return [p for p in pages]
 
         # Build rows for table (compact for mobile): MKT and AGE are short
-        rows: List[List[str]] = [["SYMBOL", "NOW", "OPEN", "%", "MKT", "AGE"]]
+        rows: List[List[str]] = [["Ticker", "Now", "Open", "%", "Market", "Age"]]
 
         def _market_label(sym: str, market_code: str) -> str:
             sfx = ""

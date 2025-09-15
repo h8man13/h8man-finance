@@ -131,7 +131,7 @@ screens:
   # Validation errors for prompts (bad input) and upstream errors
   invalid_template:
     blocks:
-      - paragraph: "Hmm, that didn’t look right — {error}"
+      - paragraph: "Hmm, that didn’t look right - {error}"
       - paragraph: "Try: {usage}"
       - paragraph: "Example: {example}"
 
