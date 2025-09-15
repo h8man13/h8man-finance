@@ -31,7 +31,7 @@
 ###############################################
 snippets:
   symbol_error: 
-    - paragraph: "⚠️ Some tickers were not found! Fix them or send new ones without rerunning /price."
+    - paragraph: "⚠️ Some tickers couldn't be found. See the list below, then fix them or send new ones without rerunning /price."
     
   session_hint:
     - bullets:
@@ -121,7 +121,7 @@ screens:
   # Unknown input & command
   unknown_input:
     blocks:
-      - paragraph: "Didn’t catch that. Try /help"
+      - paragraph: "Did't catch that. Try /help"
 
   unknown_command:
     blocks:
@@ -131,7 +131,7 @@ screens:
   # Validation errors for prompts (bad input) and upstream errors
   invalid_template:
     blocks:
-      - paragraph: "Hmm, that didn’t look right - {error}"
+      - paragraph: "Hmm, that didn't look right - {error}"
       - paragraph: "Try: {usage}"
       - paragraph: "Example: {example}"
 
@@ -159,7 +159,7 @@ screens:
   fx_error:
     blocks:
       - paragraph: "⚠️ Unable to fetch {base} {quote} right now."
-      - paragraph: "This may happen if the pair isn’t supported or the market is unavailable."
+      - paragraph: "This may happen if the pair isn't supported or the market is unavailable."
       - paragraph: "Try again with: {usage}"
       - paragraph: "Example: {example}"
 
