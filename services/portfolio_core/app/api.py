@@ -255,14 +255,22 @@ async def get_portfolio(
 
 @router.post("/add", response_model=OkEnvelope | ErrEnvelope)
 async def add_position(
-    qty: Decimal = Query(...),
-    symbol: str = Query(...),
+    qty: Optional[Decimal] = Query(None),
+    symbol: Optional[str] = Query(None),
     type: Optional[str] = Query(None, alias="type"),
     uc: UserContext = Depends(user_dep),
     conn = Depends(db_dep),
 ):
     """Add position (Telegram /add command)."""
     try:
+        # Validate required parameters
+        if qty is None:
+            return err("BAD_INPUT", "qty parameter is required", "portfolio_core")
+        if symbol is None:
+            return err("BAD_INPUT", "symbol parameter is required", "portfolio_core")
+        if type is None:
+            return err("BAD_INPUT", "type parameter is required", "portfolio_core")
+
         await upsert_user(conn, uc.model_dump())
         portfolio_service = PortfolioService(conn, uc)
         position = await portfolio_service.add_position(symbol, qty, type)
@@ -273,12 +281,16 @@ async def add_position(
 
 @router.post("/remove", response_model=OkEnvelope | ErrEnvelope)
 async def remove_position(
-    symbol: str = Query(...),
+    symbol: Optional[str] = Query(None),
     uc: UserContext = Depends(user_dep),
     conn = Depends(db_dep),
 ):
     """Remove position (Telegram /remove command)."""
     try:
+        # Validate required parameters
+        if symbol is None:
+            return err("BAD_INPUT", "symbol parameter is required", "portfolio_core")
+
         await upsert_user(conn, uc.model_dump())
         portfolio_service = PortfolioService(conn, uc)
         await portfolio_service.remove_position(symbol)
@@ -304,12 +316,15 @@ async def get_cash(
 
 @router.post("/cash_add", response_model=OkEnvelope | ErrEnvelope)
 async def add_cash(
-    amount: Decimal = Query(...),
+    amount: Optional[Decimal] = Query(None),
     uc: UserContext = Depends(user_dep),
     conn = Depends(db_dep),
 ):
     """Add/withdraw cash (Telegram /cash_add command)."""
     try:
+        if amount is None:
+            return err("BAD_INPUT", "amount parameter is required", "portfolio_core")
+
         await upsert_user(conn, uc.model_dump())
         portfolio_service = PortfolioService(conn, uc)
         result = await portfolio_service.update_cash(amount)
@@ -320,14 +335,22 @@ async def add_cash(
 
 @router.post("/buy", response_model=OkEnvelope | ErrEnvelope)
 async def buy_position(
-    qty: Decimal = Query(...),
-    symbol: str = Query(...),
-    price_ccy: Decimal = Query(...),
+    qty: Optional[Decimal] = Query(None),
+    symbol: Optional[str] = Query(None),
+    price_ccy: Optional[Decimal] = Query(None),
     uc: UserContext = Depends(user_dep),
     conn = Depends(db_dep),
 ):
     """Buy position (Telegram /buy command)."""
     try:
+        # Validate required parameters
+        if qty is None:
+            return err("BAD_INPUT", "qty parameter is required", "portfolio_core")
+        if symbol is None:
+            return err("BAD_INPUT", "symbol parameter is required", "portfolio_core")
+        if price_ccy is None:
+            return err("BAD_INPUT", "price_ccy parameter is required", "portfolio_core")
+
         await upsert_user(conn, uc.model_dump())
         portfolio_service = PortfolioService(conn, uc)
         tx = await portfolio_service.record_transaction(
@@ -343,14 +366,20 @@ async def buy_position(
 
 @router.post("/sell", response_model=OkEnvelope | ErrEnvelope)
 async def sell_position(
-    qty: Decimal = Query(...),
-    symbol: str = Query(...),
+    qty: Optional[Decimal] = Query(None),
+    symbol: Optional[str] = Query(None),
     price_ccy: Optional[Decimal] = Query(None),
     uc: UserContext = Depends(user_dep),
     conn = Depends(db_dep),
 ):
     """Sell position (Telegram /sell command)."""
     try:
+        # Validate required parameters
+        if qty is None:
+            return err("BAD_INPUT", "qty parameter is required", "portfolio_core")
+        if symbol is None:
+            return err("BAD_INPUT", "symbol parameter is required", "portfolio_core")
+
         await upsert_user(conn, uc.model_dump())
         portfolio_service = PortfolioService(conn, uc)
 
@@ -477,14 +506,22 @@ async def get_allocation(
 
 @router.post("/allocation_edit", response_model=OkEnvelope | ErrEnvelope)
 async def edit_allocation(
-    etf_pct: int = Query(...),
-    stock_pct: int = Query(...),
-    crypto_pct: int = Query(...),
+    etf_pct: Optional[int] = Query(None),
+    stock_pct: Optional[int] = Query(None),
+    crypto_pct: Optional[int] = Query(None),
     uc: UserContext = Depends(user_dep),
     conn = Depends(db_dep),
 ):
     """Edit allocation targets (Telegram /allocation_edit command)."""
     try:
+        # Validate required parameters
+        if etf_pct is None:
+            return err("BAD_INPUT", "etf_pct parameter is required", "portfolio_core")
+        if stock_pct is None:
+            return err("BAD_INPUT", "stock_pct parameter is required", "portfolio_core")
+        if crypto_pct is None:
+            return err("BAD_INPUT", "crypto_pct parameter is required", "portfolio_core")
+
         await upsert_user(conn, uc.model_dump())
         portfolio_service = PortfolioService(conn, uc)
         result = await portfolio_service.set_allocation_targets(etf_pct, stock_pct, crypto_pct)
@@ -536,13 +573,19 @@ async def portfolio_what_if(
 
 @router.post("/rename", response_model=OkEnvelope | ErrEnvelope)
 async def rename_symbol(
-    symbol: str = Query(...),
-    nickname: str = Query(...),
+    symbol: Optional[str] = Query(None),
+    nickname: Optional[str] = Query(None),
     uc: UserContext = Depends(user_dep),
     conn = Depends(db_dep),
 ):
     """Rename symbol (Telegram /rename command)."""
     try:
+        # Validate required parameters
+        if symbol is None:
+            return err("BAD_INPUT", "symbol parameter is required", "portfolio_core")
+        if nickname is None:
+            return err("BAD_INPUT", "nickname parameter is required", "portfolio_core")
+
         await upsert_user(conn, uc.model_dump())
         portfolio_service = PortfolioService(conn, uc)
         result = await portfolio_service.set_symbol_nickname(symbol, nickname)

@@ -211,7 +211,12 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
         example = spec.help.get("example", "")
         pages = render_screen(ui, "invalid_template", {"error": err, "usage": usage, "example": example})
         return [p for p in pages]
-    if missing:
+
+    # Check if this command should prompt when no user arguments provided
+    should_prompt_when_empty = spec.args_schema and spec.name not in ["/tx", "/portfolio_snapshot", "/portfolio_summary", "/portfolio_breakdown", "/portfolio_digest", "/portfolio_movers"]
+    user_provided_no_args = not tokens and not (existing and existing.get("got"))
+
+    if missing or (should_prompt_when_empty and user_provided_no_args):
         # For /price, start a sticky session so user can keep sending symbols
         sticky = (spec.name == "/price")
         sessions.set(chat_id, {
@@ -496,11 +501,20 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
         if not positions and (cash_balance == 0 or cash_balance is None):
             pages = render_screen(ui, "portfolio_empty", {})
             return [p for p in pages]
-        # Otherwise let the portfolio data display normally
-        pages = render_screen(ui, "done", {})
-        return [p for p in pages]
 
-    # default success (for other read-only commands like /cash, /allocation, etc.)
+    # For read-only portfolio commands, display the service response as formatted JSON
+    if spec.name in ["/cash", "/allocation", "/tx", "/portfolio_snapshot", "/portfolio_summary",
+                     "/portfolio_breakdown", "/portfolio_digest", "/portfolio_movers", "/po_if", "/portfolio"]:
+        # Format the JSON response nicely for display
+        import json
+        data = resp.get("data", {})
+        if data:
+            formatted_json = json.dumps(data, indent=2, ensure_ascii=False)
+            return [f"```json\n{formatted_json}\n```"]
+        else:
+            return ["No data available"]
+
+    # Default success (only for modification commands without specific screens)
     pages = render_screen(ui, "done", {})
     return [p for p in pages]
 
