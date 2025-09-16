@@ -458,13 +458,49 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
             rate_str = str(rate_disp)
         pages = render_screen(ui, "fx_result", {"base": base, "quote": quote, "rate": rate_str})
         return [p for p in pages]
+    # Portfolio command success screens
     if spec.name in ("/buy", "/sell"):
         key = "buy_success" if spec.name == "/buy" else "sell_success"
         pages = render_screen(ui, key, values)
         sessions.clear(chat_id)
         return [p for p in pages]
+    elif spec.name == "/add":
+        pages = render_screen(ui, "add_success", values)
+        sessions.clear(chat_id)
+        return [p for p in pages]
+    elif spec.name == "/remove":
+        pages = render_screen(ui, "remove_success", values)
+        sessions.clear(chat_id)
+        return [p for p in pages]
+    elif spec.name == "/cash_add":
+        pages = render_screen(ui, "cash_add_success", values)
+        sessions.clear(chat_id)
+        return [p for p in pages]
+    elif spec.name == "/allocation_edit":
+        pages = render_screen(ui, "allocation_edit_success", values)
+        sessions.clear(chat_id)
+        return [p for p in pages]
+    elif spec.name == "/rename":
+        pages = render_screen(ui, "rename_success", values)
+        sessions.clear(chat_id)
+        return [p for p in pages]
 
-    # default success
+    # Special handling for /portfolio when empty
+    elif spec.name == "/portfolio":
+        # Check if portfolio is empty by looking at the response data
+        portfolio_data = resp.get("data", {}).get("portfolio", {})
+        positions = portfolio_data.get("positions", [])
+        cash_balance = portfolio_data.get("cash_balance_eur", 0)
+
+        # If no positions and no cash, show guidance for new users
+        if not positions and (cash_balance == 0 or cash_balance is None):
+            pages = render_screen(ui, "portfolio_empty", {})
+            return [p for p in pages]
+        # Otherwise let the portfolio data display normally
+        pages = render_screen(ui, "done", {})
+        return [p for p in pages]
+
+    # default success (for other read-only commands like /cash, /allocation, etc.)
     pages = render_screen(ui, "done", {})
     return [p for p in pages]
 

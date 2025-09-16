@@ -328,5 +328,45 @@ screens:
     blocks:
       - paragraph: "sell: *{symbol}* ×{qty} @ {price_ccy}"
 
+  # /add – success message
+  add_success:
+    blocks:
+      - paragraph: "✅ Added {qty} shares of *{symbol}* to your portfolio"
+
+  # /remove – success message
+  remove_success:
+    blocks:
+      - paragraph: "✅ Removed all *{symbol}* positions from your portfolio"
+
+  # /cash_add – success message
+  cash_add_success:
+    blocks:
+      - paragraph: "✅ Updated cash balance by €{amount}"
+
+  # /allocation_edit – success message
+  allocation_edit_success:
+    blocks:
+      - paragraph: "✅ Updated allocation targets: ETF {etf_pct}%, Stock {stock_pct}%, Crypto {crypto_pct}%"
+
+  # /rename – success message
+  rename_success:
+    blocks:
+      - paragraph: "✅ Renamed *{symbol}* to '{nickname}'"
+
+  # /portfolio – empty portfolio guidance for new users
+  portfolio_empty:
+    blocks:
+      - header: "Your portfolio is empty"
+      - paragraph: "Get started by adding some positions or cash to track your investments."
+      - spacer: { lines: 1 }
+      - subheader: "Quick start options:"
+      - bullets:
+          items:
+            - "Add cash: `/cash_add 1000` (adds €1,000)"
+            - "Add a position: `/add 10 AAPL.US stock` (adds 10 Apple shares)"
+            - "Record a purchase: `/buy 5 MSFT.US 300` (buys 5 Microsoft at $300)"
+      - spacer: { lines: 1 }
+      - paragraph: "Once you have some positions, use `/portfolio` to see your holdings and performance."
+
 
 
