@@ -21,7 +21,7 @@ def _env_setup(tmp_path_factory):
     os.environ.setdefault("ROUTER_OWNER_IDS", "42")
 
     # Point registry/copies/ranking to this repo's config files
-    base = os.path.abspath("services/telegram_router")
+    base = os.path.abspath(".")
     os.environ.setdefault("REGISTRY_PATH", os.path.join(base, "config", "commands.json"))
     os.environ.setdefault("COPIES_PATH", os.path.join(base, "config", "router_copies.yaml"))
     os.environ.setdefault("RANKING_PATH", os.path.join(base, "config", "help_ranking.yaml"))

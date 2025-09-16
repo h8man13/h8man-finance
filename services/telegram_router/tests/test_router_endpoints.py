@@ -56,12 +56,14 @@ def test_webhook_process_text_and_idempotency(client, monkeypatch, capture_teleg
     # Patch Dispatcher.dispatch to avoid external calls and return OK
     import app.app as appmod  # type: ignore
 
-    async def _fake_dispatch(spec, args):
+    async def _fake_dispatch_func(spec, args, user_context=None):
         if spec.get("service") == "fx":
             return {"ok": True, "data": {"rate": 1.2345}}
         return {"ok": True, "data": {}}
 
-    monkeypatch.setattr(appmod.Dispatcher, "dispatch", lambda self, spec, args: _fake_dispatch(spec, args))
+    async def _async_fake_dispatch(self, spec, args, user_context=None):
+        return await _fake_dispatch_func(spec, args, user_context)
+    monkeypatch.setattr(appmod.Dispatcher, "dispatch", _async_fake_dispatch)
 
     # Valid update -> message sent once
     upd = _make_update(update_id=100, chat_id=999, sender_id=42, text="/fx eur usd")
@@ -97,12 +99,12 @@ def test_test_endpoint_price_prompt_and_table(client, monkeypatch, capture_teleg
     assert r1.status_code == 200 and r1.json()["ok"] is True
     # The first send is the prompt
     assert capture_telegram
-    assert "what symbols" in capture_telegram[-1]["text"].lower()
+    assert "what tickers should i check" in capture_telegram[-1]["text"].lower()
 
     # Now table with partial
     import app.app as appmod  # type: ignore
 
-    async def _fake_dispatch(spec, args):
+    async def _fake_dispatch_func(spec, args, user_context=None):
         if spec.get("service") == "market_data":
             return {
                 "ok": True,
@@ -114,7 +116,9 @@ def test_test_endpoint_price_prompt_and_table(client, monkeypatch, capture_teleg
             }
         return {"ok": True, "data": {}}
 
-    monkeypatch.setattr(appmod.Dispatcher, "dispatch", lambda self, spec, args: _fake_dispatch(spec, args))
+    async def _async_fake_dispatch_2(self, spec, args, user_context=None):
+        return await _fake_dispatch_func(spec, args, user_context)
+    monkeypatch.setattr(appmod.Dispatcher, "dispatch", _async_fake_dispatch_2)
     r2 = client.post("/telegram/test", json={"chat_id": 1010, "text": "aapl bad.us"})
     assert r2.status_code == 200 and r2.json()["ok"] is True
-    assert any("some symbols were not found" in m["text"].lower() for m in capture_telegram)
+    assert any("tickers couldn't be found" in m["text"].lower() for m in capture_telegram)

@@ -184,7 +184,7 @@ def test_invalid_period(client, mock_user_params):
     params["period"] = "invalid"
 
     response = client.get("/portfolio_snapshot", params=params)
-    assert response.status_code == 422  # Validation error
+    assert response.status_code == 400  # Validation error (custom handler)
 
 
 def test_missing_user_id():

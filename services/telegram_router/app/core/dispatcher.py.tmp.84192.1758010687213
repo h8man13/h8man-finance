@@ -15,16 +15,12 @@ class Dispatcher:
         self.portfolio = PortfolioCoreClient(http)
         self.fx = FXClient(http)
 
-    async def dispatch(self, spec: Dict[str, Any], args: Dict[str, Any], user_context: Dict[str, Any] = None) -> Dict[str, Any]:
+    async def dispatch(self, spec: Dict[str, Any], args: Dict[str, Any]) -> Dict[str, Any]:
         service = spec.get("service")
         method = spec.get("method", "GET").upper()
         path = spec.get("path", "/")
         args_map: Dict[str, str] = spec.get("args_map", {})
         payload: Dict[str, Any] = {to: args.get(frm) for frm, to in args_map.items()}
-
-        # Add user context for portfolio_core calls
-        if service == "portfolio_core" and user_context:
-            payload.update(user_context)
 
         # Market data
         if service == "market_data":

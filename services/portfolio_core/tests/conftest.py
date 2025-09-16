@@ -5,18 +5,17 @@ import pytest
 import asyncio
 from unittest.mock import AsyncMock, patch
 
+# Set test environment variables before imports
+os.environ.setdefault("DB_PATH", "/tmp/test_portfolio.db")
+
 from app.db import init_db, open_db
 from app.models import UserContext
 from app.services.portfolio import PortfolioService
 from app.services.analytics import AnalyticsService
 
 
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create an instance of the default event loop for the test session."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+# Removed custom event_loop fixture as it's deprecated in pytest-asyncio
+# Tests now use the default pytest-asyncio event loop
 
 
 @pytest.fixture
@@ -59,13 +58,13 @@ def user_context():
 
 
 @pytest.fixture
-async def portfolio_service(db_connection, user_context):
+def portfolio_service(db_connection, user_context):
     """Portfolio service fixture."""
     return PortfolioService(db_connection, user_context)
 
 
 @pytest.fixture
-async def analytics_service(db_connection, user_context):
+def analytics_service(db_connection, user_context):
     """Analytics service fixture."""
     return AnalyticsService(db_connection, user_context)
 

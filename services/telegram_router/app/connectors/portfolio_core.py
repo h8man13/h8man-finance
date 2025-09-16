@@ -12,12 +12,12 @@ class PortfolioCoreClient:
         self.base = get_settings().PORTFOLIO_CORE_URL.rstrip("/")
 
     async def post_buy(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        url = f"{self.base}/tx/buy"
+        url = f"{self.base}/buy"
         resp = await self.http.request("POST", url, json=payload)
         return resp.json()
 
     async def post_sell(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        url = f"{self.base}/tx/sell"
+        url = f"{self.base}/sell"
         resp = await self.http.request("POST", url, json=payload)
         return resp.json()
 

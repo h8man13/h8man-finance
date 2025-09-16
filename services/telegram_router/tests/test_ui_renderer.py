@@ -18,7 +18,7 @@ def test_ui_renderer_basic_blocks():
     # Code fenced and preserved
     assert "```" in out and "print('hi')" in out
     # Footnote italic with one blank line padding
-    assert "_Note: Be nice._" in out
+    assert "_Note: Be nice\\._" in out
 
 def test_ui_loader_includes(monkeypatch, tmp_path):
     from app.ui.loader import load_ui, render_screen  # type: ignore

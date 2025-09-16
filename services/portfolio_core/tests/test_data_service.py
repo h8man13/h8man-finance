@@ -63,7 +63,7 @@ async def test_get_current_quotes_success(data_service):
     }
 
     with patch('app.services.data_service.market_data_client') as mock_client:
-        mock_client.get_quotes.return_value = mock_quotes
+        mock_client.get_quotes = AsyncMock(return_value=mock_quotes)
 
         quotes, freshness = await data_service.get_current_quotes(symbols)
 
@@ -81,7 +81,7 @@ async def test_get_current_quotes_service_failure(data_service):
     symbols = ["AAPL.US", "MSFT.US"]
 
     with patch('app.services.data_service.market_data_client') as mock_client:
-        mock_client.get_quotes.side_effect = Exception("Service unavailable")
+        mock_client.get_quotes = AsyncMock(side_effect=Exception("Service unavailable"))
 
         quotes, freshness = await data_service.get_current_quotes(symbols)
 
@@ -99,7 +99,7 @@ async def test_convert_currency_success(data_service):
     mock_rate = FxRate("USD", "EUR", Decimal("0.85"), datetime.now(timezone.utc))
 
     with patch('app.services.data_service.fx_client') as mock_client:
-        mock_client.get_rate.return_value = mock_rate
+        mock_client.get_rate = AsyncMock(return_value=mock_rate)
 
         converted, source = await data_service.convert_currency(amount, "USD", "EUR")
 
@@ -116,7 +116,7 @@ async def test_convert_currency_fallback(data_service):
     mock_rate = FxRate("USD", "EUR", Decimal("0.85"), datetime.now(timezone.utc), source="fallback")
 
     with patch('app.services.data_service.fx_client') as mock_client:
-        mock_client.get_rate.return_value = mock_rate
+        mock_client.get_rate = AsyncMock(return_value=mock_rate)
 
         converted, source = await data_service.convert_currency(amount, "USD", "EUR")
 
@@ -130,7 +130,7 @@ async def test_convert_currency_unavailable(data_service):
     amount = Decimal("100")
 
     with patch('app.services.data_service.fx_client') as mock_client:
-        mock_client.get_rate.return_value = None
+        mock_client.get_rate = AsyncMock(return_value=None)
 
         converted, source = await data_service.convert_currency(amount, "USD", "EUR")
 
@@ -150,7 +150,7 @@ async def test_get_symbols_metadata_success(data_service):
     }
 
     with patch('app.services.data_service.market_data_client') as mock_client:
-        mock_client.get_symbols_meta.return_value = mock_metadata
+        mock_client.get_symbols_meta = AsyncMock(return_value=mock_metadata)
 
         metadata = await data_service.get_symbols_metadata(symbols)
 
@@ -166,7 +166,7 @@ async def test_get_symbols_metadata_fallback(data_service):
 
     with patch('app.services.data_service.market_data_client') as mock_client:
         # Service fails, use fallback
-        mock_client.get_symbols_meta.side_effect = Exception("Service unavailable")
+        mock_client.get_symbols_meta = AsyncMock(side_effect=Exception("Service unavailable"))
         mock_client._parse_symbol_defaults.return_value = SymbolMeta("AAPL.US", "US", "stock", "USD")
 
         metadata = await data_service.get_symbols_metadata(symbols)
@@ -267,7 +267,7 @@ async def test_batch_convert_currency(data_service):
     }
 
     with patch('app.services.data_service.fx_client') as mock_client:
-        mock_client.get_rates.return_value = mock_rates
+        mock_client.get_rates = AsyncMock(return_value=mock_rates)
         mock_client._cache_key.side_effect = lambda x, y: (x, y)
 
         results = await data_service.batch_convert_currency(conversions)
@@ -283,9 +283,9 @@ async def test_health_check(data_service):
     with patch('app.services.data_service.fx_client') as mock_fx, \
          patch('app.services.data_service.market_data_client') as mock_md:
 
-        mock_fx.health_check.return_value = True
+        mock_fx.health_check = AsyncMock(return_value=True)
         mock_fx.cache = {"test": "entry"}
-        mock_md.health_check.return_value = True
+        mock_md.health_check = AsyncMock(return_value=True)
         mock_md.get_cache_stats.return_value = {"quotes_cached": 5, "meta_cached": 3}
 
         health = await data_service.health_check()

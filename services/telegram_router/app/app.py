@@ -148,7 +148,7 @@ async def send_telegram_message(token: str, chat_id: int, text: str, parse_mode:
 # Legacy help builder removed; /help is rendered via UI screens.
 
 
-async def process_text(chat_id: int, sender_id: int, text: str, ctx):
+async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_context: Dict[str, Any] = None):
     s, registry, sessions, idemp, dispatcher, http = ctx
     ui = load_ui(get_settings().UI_PATH)
     if not ui:
@@ -235,7 +235,7 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx):
     clear_after = True
     if spec.name == "/price" and existing and existing.get("cmd") == "/price" and existing.get("sticky"):
         clear_after = False
-    resp = await dispatcher.dispatch(spec.dispatch, values)
+    resp = await dispatcher.dispatch(spec.dispatch, values, user_context)
     if not isinstance(resp, dict) or not resp.get("ok", False):
         err = (resp or {}).get("error", {})
         usage = spec.help.get("usage", "")
@@ -537,7 +537,18 @@ async def telegram_webhook(request: Request, x_telegram_bot_api_secret_token: Op
         return {"ok": True}
 
     try:
-        replies = await process_text(chat_id, sender_id, text, (s, registry, sessions, idemp, dispatcher, http))
+        # Extract user context from Telegram message
+        user_context = {}
+        if msg.from_:
+            user_context = {
+                "user_id": msg.from_.id,
+                "first_name": getattr(msg.from_, 'first_name', ''),
+                "last_name": getattr(msg.from_, 'last_name', ''),
+                "username": msg.from_.username,
+                "language_code": getattr(msg.from_, 'language_code', 'en')
+            }
+
+        replies = await process_text(chat_id, sender_id, text, (s, registry, sessions, idemp, dispatcher, http), user_context)
     except Exception as e:
         json_log(action="process", status="error", error=str(e), chat_id=chat_id)
         replies = [escape_mdv2("Internal error")]
@@ -558,7 +569,15 @@ async def telegram_test(body: TestRouteIn):
     chat_id = body.chat_id
     text = body.text
     sender_id = s.owner_ids[0] if s.owner_ids else 0
-    replies = await process_text(chat_id, sender_id, text, (s, registry, sessions, idemp, dispatcher, http))
+    # Create mock user context for test
+    user_context = {
+        "user_id": sender_id,
+        "first_name": "Test",
+        "last_name": "User",
+        "username": "testuser",
+        "language_code": "en"
+    }
+    replies = await process_text(chat_id, sender_id, text, (s, registry, sessions, idemp, dispatcher, http), user_context)
     # Also send via Telegram for parity
     for r in replies:
         for chunk in paginate(r):

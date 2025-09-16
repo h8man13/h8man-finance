@@ -62,7 +62,7 @@ screens:
             - "/po_digest - overview of returns, benchmarks, movers, allocation"
             - "/po_movers - top gainers & losers"
             - "/allocation - current vs target allocations"
-            - "/allocation_edit [etf|stocks|crypto] - adjust target allocations"
+            - "/allocation_edit [etf_pct] [stock_pct] [crypto_pct] - adjust target allocations"
             - "/rename - assign or update a nickname for a symbol"
             - "/tx - show last transactions"
             - "/cash - current available cash balance"
@@ -181,82 +181,142 @@ screens:
   # /buy – missing args prompt
   buy_prompt:
     blocks:
-      - header: "Use: [qty] [symbol] [price_ccy]"
+      - header: "Record a buy transaction"
+      - bullets:
+          items:
+            - "Enter quantity, symbol, and price per share in your base currency."
+            - "Example: /buy 10 AAPL.US 150"
+            - "This will buy 10 shares of Apple at $150 each."
 
   # /sell – missing args prompt
   sell_prompt:
     blocks:
-      - header: "Use: [qty] [symbol] [price_ccy]"
+      - header: "Record a sell transaction"
+      - bullets:
+          items:
+            - "Enter quantity, symbol, and price per share in your base currency."
+            - "Example: /sell 5 AAPL.US 155"
+            - "This will sell 5 shares of Apple at $155 each."
 
   # /add – missing args prompt
   add_prompt:
     blocks:
-      - header: "Use: [qty] [symbol] [type]"
+      - header: "Add a new position to your portfolio"
+      - bullets:
+          items:
+            - "Enter quantity, symbol, and type (stock, etf, or crypto)."
+            - "Example: /add 10 AAPL.US stock"
+            - "This adds 10 shares of Apple stock to your portfolio."
 
   # /remove – missing args prompt
   remove_prompt:
     blocks:
-      - header: "Use: [symbol]"
-
-  # /cash – no args prompt
-  cash_prompt:
-    blocks:
-      - header: "Use: /cash"
+      - header: "Remove a position from your portfolio"
+      - bullets:
+          items:
+            - "Enter the symbol you want to remove completely."
+            - "Example: /remove AAPL.US"
+            - "This removes all Apple shares from your portfolio."
 
   # /cash_add – missing args prompt
   cash_add_prompt:
     blocks:
-      - header: "Use: [amount]"
+      - header: "Add or withdraw cash from your portfolio"
+      - bullets:
+          items:
+            - "Enter the amount in EUR (positive to add, negative to withdraw)."
+            - "Example: /cash_add 1000"
+            - "This adds €1,000 to your available cash balance."
 
   # /tx – optional args prompt
   tx_prompt:
     blocks:
-      - header: "Use: [n]"
+      - header: "View your recent transactions"
+      - bullets:
+          items:
+            - "Enter how many transactions to show (1-50)."
+            - "Example: /tx 10"
+            - "Leave empty to see the last 10 transactions."
 
   # /portfolio_snapshot – optional args prompt
   portfolio_snapshot_prompt:
     blocks:
-      - header: "Use: [period=d|w|m|y]"
+      - header: "Portfolio snapshot vs benchmarks"
+      - bullets:
+          items:
+            - "Choose period: d (daily), w (weekly), m (monthly), y (yearly)."
+            - "Example: /portfolio_snapshot d"
+            - "Leave empty for daily snapshot."
 
   # /portfolio_summary – optional args prompt
   portfolio_summary_prompt:
     blocks:
-      - header: "Use: [period=d|w|m|y]"
+      - header: "Portfolio value and performance summary"
+      - bullets:
+          items:
+            - "Choose period: d (daily), w (weekly), m (monthly), y (yearly)."
+            - "Example: /portfolio_summary m"
+            - "Leave empty for monthly summary."
 
   # /portfolio_breakdown – optional args prompt
   portfolio_breakdown_prompt:
     blocks:
-      - header: "Use: [period=d|w|m|y]"
+      - header: "Holdings performance breakdown"
+      - bullets:
+          items:
+            - "Choose period: d (daily), w (weekly), m (monthly), y (yearly)."
+            - "Example: /portfolio_breakdown y"
+            - "Leave empty for yearly breakdown."
 
   # /portfolio_digest – optional args prompt
   portfolio_digest_prompt:
     blocks:
-      - header: "Use: [period=d|w|m|y]"
+      - header: "Portfolio digest with top movers"
+      - bullets:
+          items:
+            - "Choose period: d (daily), w (weekly), m (monthly), y (yearly)."
+            - "Example: /portfolio_digest m"
+            - "Leave empty for monthly digest."
 
   # /portfolio_movers – optional args prompt
   portfolio_movers_prompt:
     blocks:
-      - header: "Use: [period=d|w|m|y]"
-
-  # /allocation – no args prompt
-  allocation_prompt:
-    blocks:
-      - header: "Use: /allocation"
+      - header: "Best and worst performing holdings"
+      - bullets:
+          items:
+            - "Choose period: d (daily), w (weekly), m (monthly), y (yearly)."
+            - "Example: /portfolio_movers d"
+            - "Leave empty for daily movers."
 
   # /allocation_edit – missing args prompt
   allocation_edit_prompt:
     blocks:
-      - header: "Use: [etf,stocks,crypto]"
+      - header: "Set your target allocation percentages"
+      - bullets:
+          items:
+            - "Enter ETF%, Stock%, and Crypto% (must add up to 100)."
+            - "Example: /allocation_edit 60 30 10"
+            - "This sets 60% ETFs, 30% stocks, 10% crypto."
 
   # /po_if – missing args prompt
   po_if_prompt:
     blocks:
-      - header: "Use: [scope] [+x%|-x%]"
+      - header: "What-if analysis for price movements"
+      - bullets:
+          items:
+            - "Enter a symbol or category and percentage change."
+            - "Example: /po_if AAPL.US +5%"
+            - "Use 'stocks', 'etf', or 'crypto' for entire categories."
 
   # /rename – missing args prompt
   rename_prompt:
     blocks:
-      - header: "Use: [symbol] [nickname]"
+      - header: "Assign a nickname to a holding"
+      - bullets:
+          items:
+            - "Enter symbol and your preferred nickname."
+            - "Example: /rename AAPL.US 'Apple Inc'"
+            - "Nicknames help you identify holdings more easily."
 
   # /buy – success message
   buy_success:

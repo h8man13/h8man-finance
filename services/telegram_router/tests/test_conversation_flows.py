@@ -22,18 +22,20 @@ def test_price_interactive_no_quotes_prompts_again_and_sticky(monkeypatch):
 
     # Start interactive
     out1 = appmod.asyncio.run(appmod.process_text(chat_id=5101, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/price", ctx=ctx))
-    assert out1 and "what symbols" in out1[0].lower()
+    assert out1 and "what tickers should i check" in out1[0].lower()
     assert sessions.get(5101) and sessions.get(5101).get("cmd") == "/price"
 
     # Reply with symbols but dispatcher yields empty quotes -> prompt again, still sticky
-    async def _fake_dispatch_empty(spec, args):
+    async def _fake_dispatch_func(spec, args, user_context=None):
         if spec.get("service") == "market_data":
             return {"ok": True, "data": {"quotes": []}}
         return {"ok": True, "data": {}}
 
-    monkeypatch.setattr(appmod.Dispatcher, "dispatch", lambda self, spec, args: _fake_dispatch_empty(spec, args))
+    async def _async_fake_dispatch(self, spec, args, user_context=None):
+        return await _fake_dispatch_func(spec, args, user_context)
+    monkeypatch.setattr(appmod.Dispatcher, "dispatch", _async_fake_dispatch)
     out2 = appmod.asyncio.run(appmod.process_text(chat_id=5101, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="nvda", ctx=ctx))
-    assert out2 and "what symbols" in out2[0].lower()
+    assert out2 and ("what tickers should i check" in out2[0].lower() or "couldn't be found" in out2[0].lower())
     assert sessions.get(5101) and sessions.get(5101).get("cmd") == "/price"
 
 
@@ -49,12 +51,12 @@ def test_price_error_keeps_sticky(monkeypatch):
     assert out1 and sessions.get(5201)
 
     # Make market_data fail in dispatch
-    async def _fake_dispatch_fail(spec, args):
+    async def _fake_dispatch_fail(spec, args, user_context=None):
         if spec.get("service") == "market_data":
             return {"ok": False, "error": {"code": "NOT_FOUND", "message": "symbol not recognized"}}
         return {"ok": True, "data": {}}
 
-    monkeypatch.setattr(appmod.Dispatcher, "dispatch", lambda self, spec, args: _fake_dispatch_fail(spec, args))
+    monkeypatch.setattr(appmod.Dispatcher, "dispatch", lambda self, spec, args, user_context=None: _fake_dispatch_fail(spec, args, user_context))
     out2 = appmod.asyncio.run(appmod.process_text(chat_id=5201, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="nope.us", ctx=ctx))
     assert out2
     low = out2[0].lower()
@@ -86,13 +88,15 @@ def test_fx_inversion_display(monkeypatch):
     ctx = deps()
     s, registry, sessions, idemp, dispatcher, http = ctx
 
-    async def _fake_dispatch(spec, args):
+    async def _fake_dispatch_func(spec, args, user_context=None):
         if spec.get("service") == "fx":
             # USD_EUR = 2.0 -> EUR/USD should display 0.5
             return {"ok": True, "data": {"pair": "USD_EUR", "rate": 2.0}}
         return {"ok": True, "data": {}}
 
-    monkeypatch.setattr(appmod.Dispatcher, "dispatch", lambda self, spec, args: _fake_dispatch(spec, args))
+    async def _async_fake_dispatch(self, spec, args, user_context=None):
+        return await _fake_dispatch_func(spec, args, user_context)
+    monkeypatch.setattr(appmod.Dispatcher, "dispatch", _async_fake_dispatch)
     out = appmod.asyncio.run(appmod.process_text(chat_id=5401, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/fx eur usd", ctx=ctx))
     assert out and out[0]
     txt = out[0].lower()
@@ -106,14 +110,16 @@ def test_price_market_column_defaults_to_us(monkeypatch):
     ctx = deps()
     s, registry, sessions, idemp, dispatcher, http = ctx
 
-    async def _fake_dispatch(spec, args):
+    async def _fake_dispatch_func(spec, args, user_context=None):
         if spec.get("service") == "market_data":
             return {"ok": True, "data": {"quotes": [
                 {"symbol": "AAPL.US", "price_eur": 100.0, "open_eur": 100.0},  # no market -> should show US
             ]}}
         return {"ok": True, "data": {}}
 
-    monkeypatch.setattr(appmod.Dispatcher, "dispatch", lambda self, spec, args: _fake_dispatch(spec, args))
+    async def _async_fake_dispatch(self, spec, args, user_context=None):
+        return await _fake_dispatch_func(spec, args, user_context)
+    monkeypatch.setattr(appmod.Dispatcher, "dispatch", _async_fake_dispatch)
     out = appmod.asyncio.run(appmod.process_text(chat_id=5501, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/price aapl", ctx=ctx))
     assert out and out[0].startswith("```")
     assert "MARKET" in out[0] and "US" in out[0]
@@ -126,7 +132,7 @@ def test_price_one_shot_partial_footnote(monkeypatch):
     ctx = deps()
     s, registry, sessions, idemp, dispatcher, http = ctx
 
-    async def _fake_dispatch(spec, args):
+    async def _fake_dispatch_func(spec, args, user_context=None):
         if spec.get("service") == "market_data":
             return {
                 "ok": True,
@@ -138,11 +144,13 @@ def test_price_one_shot_partial_footnote(monkeypatch):
             }
         return {"ok": True, "data": {}}
 
-    monkeypatch.setattr(appmod.Dispatcher, "dispatch", lambda self, spec, args: _fake_dispatch(spec, args))
+    async def _async_fake_dispatch(self, spec, args, user_context=None):
+        return await _fake_dispatch_func(spec, args, user_context)
+    monkeypatch.setattr(appmod.Dispatcher, "dispatch", _async_fake_dispatch)
 
     out = appmod.asyncio.run(appmod.process_text(chat_id=5601, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/price aapl nope.us", ctx=ctx))
     assert out and out[0]
-    assert "Some symbols were not found".lower() in out[0].lower()
+    assert "tickers couldn't be found" in out[0].lower()
 
 
 def test_price_alias_p_one_shot_and_prompt(monkeypatch):
@@ -152,14 +160,16 @@ def test_price_alias_p_one_shot_and_prompt(monkeypatch):
     ctx = deps()
     s, registry, sessions, idemp, dispatcher, http = ctx
 
-    async def _fake_dispatch_one(spec, args):
+    async def _fake_dispatch_func(spec, args, user_context=None):
         if spec.get("service") == "market_data":
             return {"ok": True, "data": {"quotes": [
                 {"symbol": "AAPL.US", "price_eur": 100.0, "open_eur": 95.0, "market": "US", "freshness": "Live"},
             ]}}
         return {"ok": True, "data": {}}
 
-    monkeypatch.setattr(appmod.Dispatcher, "dispatch", lambda self, spec, args: _fake_dispatch_one(spec, args))
+    async def _async_fake_dispatch(self, spec, args, user_context=None):
+        return await _fake_dispatch_func(spec, args, user_context)
+    monkeypatch.setattr(appmod.Dispatcher, "dispatch", _async_fake_dispatch)
     # One-shot
     out1 = appmod.asyncio.run(appmod.process_text(chat_id=5602, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/p aapl", ctx=ctx))
     assert out1 and out1[0].startswith("```") and "AAPL" in out1[0]
@@ -167,7 +177,7 @@ def test_price_alias_p_one_shot_and_prompt(monkeypatch):
 
     # Prompt
     out2 = appmod.asyncio.run(appmod.process_text(chat_id=5602, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/p", ctx=ctx))
-    assert out2 and "what symbols" in out2[0].lower()
+    assert out2 and "what tickers should i check" in out2[0].lower()
     assert sessions.get(5602) and sessions.get(5602).get("cmd") == "/price"
 
 
@@ -182,7 +192,7 @@ def test_price_interactive_partial_footnote(monkeypatch):
     out0 = appmod.asyncio.run(appmod.process_text(chat_id=5603, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/price", ctx=ctx))
     assert out0 and sessions.get(5603)
 
-    async def _fake_dispatch_partial(spec, args):
+    async def _fake_dispatch_func(spec, args, user_context=None):
         if spec.get("service") == "market_data":
             return {
                 "ok": True,
@@ -194,9 +204,11 @@ def test_price_interactive_partial_footnote(monkeypatch):
             }
         return {"ok": True, "data": {}}
 
-    monkeypatch.setattr(appmod.Dispatcher, "dispatch", lambda self, spec, args: _fake_dispatch_partial(spec, args))
+    async def _async_fake_dispatch(self, spec, args, user_context=None):
+        return await _fake_dispatch_func(spec, args, user_context)
+    monkeypatch.setattr(appmod.Dispatcher, "dispatch", _async_fake_dispatch)
     out = appmod.asyncio.run(appmod.process_text(chat_id=5603, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="aapl bad.us", ctx=ctx))
-    assert out and "some symbols were not found" in out[0].lower()
+    assert out and "tickers couldn't be found" in out[0].lower()
     # session remains sticky
     assert sessions.get(5603) and sessions.get(5603).get("cmd") == "/price"
 
@@ -288,12 +300,14 @@ def test_fx_error_handling(monkeypatch):
     ctx = deps()
     s, registry, sessions, idemp, dispatcher, http = ctx
 
-    async def _fake_dispatch_err(spec, args):
+    async def _fake_dispatch_func(spec, args, user_context=None):
         if spec.get("service") == "fx":
             return {"ok": False, "error": {"code": "UPSTREAM_ERROR", "message": "fx down"}}
         return {"ok": True, "data": {}}
 
-    monkeypatch.setattr(appmod.Dispatcher, "dispatch", lambda self, spec, args: _fake_dispatch_err(spec, args))
+    async def _async_fake_dispatch_err(self, spec, args, user_context=None):
+        return await _fake_dispatch_func(spec, args, user_context)
+    monkeypatch.setattr(appmod.Dispatcher, "dispatch", _async_fake_dispatch_err)
     out = appmod.asyncio.run(appmod.process_text(chat_id=5901, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/fx", ctx=ctx))
     assert out
     l = out[0].lower()
@@ -309,7 +323,7 @@ def test_end_to_end_user_flow(monkeypatch):
     ctx = deps()
     s, registry, sessions, idemp, dispatcher, http = ctx
 
-    async def _fake_dispatch(spec, args):
+    async def _fake_dispatch_func(spec, args, user_context=None):
         if spec.get("service") == "market_data":
             syms = args.get("symbols") or []
             # normalize inputs in tests
@@ -325,7 +339,9 @@ def test_end_to_end_user_flow(monkeypatch):
             return {"ok": True, "data": {"pair": "USD_EUR", "rate": 1.2}}
         return {"ok": True, "data": {}}
 
-    monkeypatch.setattr(appmod.Dispatcher, "dispatch", lambda self, spec, args: _fake_dispatch(spec, args))
+    async def _async_fake_dispatch(self, spec, args, user_context=None):
+        return await _fake_dispatch_func(spec, args, user_context)
+    monkeypatch.setattr(appmod.Dispatcher, "dispatch", _async_fake_dispatch)
 
     chat = 6001
     owner = (s.owner_ids[0] if s.owner_ids else 0)
@@ -336,7 +352,7 @@ def test_end_to_end_user_flow(monkeypatch):
 
     # /p -> prompt
     o2 = appmod.asyncio.run(appmod.process_text(chat_id=chat, sender_id=owner, text="/p", ctx=ctx))
-    assert o2 and "what symbols" in o2[0].lower()
+    assert o2 and "what tickers should i check" in o2[0].lower()
 
     # amzn -> table
     o3 = appmod.asyncio.run(appmod.process_text(chat_id=chat, sender_id=owner, text="amzn", ctx=ctx))
@@ -356,7 +372,7 @@ def test_end_to_end_user_flow(monkeypatch):
 
     # /p amzn nope.us -> partial footnote or service error
     o7 = appmod.asyncio.run(appmod.process_text(chat_id=chat, sender_id=owner, text="/p amzn nope.us", ctx=ctx))
-    assert o7 and ("some symbols were not found" in o7[0].lower() or "service error" in o7[0].lower())
+    assert o7 and ("tickers couldn't be found" in o7[0].lower() or "service error" in o7[0].lower())
 
 def test_price_one_shot_partial_without_details(monkeypatch):
     import app.app as appmod  # type: ignore
@@ -365,7 +381,7 @@ def test_price_one_shot_partial_without_details(monkeypatch):
     ctx = deps()
     s, registry, sessions, idemp, dispatcher, http = ctx
 
-    async def _fake_dispatch(spec, args):
+    async def _fake_dispatch_func(spec, args, user_context=None):
         if spec.get("service") == "market_data":
             # Partial true but no error.details
             return {
@@ -377,8 +393,10 @@ def test_price_one_shot_partial_without_details(monkeypatch):
             }
         return {"ok": True, "data": {}}
 
-    monkeypatch.setattr(appmod.Dispatcher, "dispatch", lambda self, spec, args: _fake_dispatch(spec, args))
+    async def _async_fake_dispatch(self, spec, args, user_context=None):
+        return await _fake_dispatch_func(spec, args, user_context)
+    monkeypatch.setattr(appmod.Dispatcher, "dispatch", _async_fake_dispatch)
     out = appmod.asyncio.run(appmod.process_text(chat_id=7601, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/price aapl nope.us", ctx=ctx))
     assert out and out[0]
-    assert "some symbols were not found" in out[0].lower()
+    assert "tickers couldn't be found" in out[0].lower()
 

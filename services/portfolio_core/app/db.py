@@ -179,8 +179,15 @@ ALTER TABLE cash_balances_new RENAME TO cash_balances;
 async def init_db(db_path: Optional[str] = None) -> None:
     """Initialize database schema."""
     from .settings import settings
+    import os
 
     path = db_path or settings.DB_PATH
+
+    # Ensure directory exists
+    directory = os.path.dirname(path)
+    if directory and not os.path.exists(directory):
+        os.makedirs(directory, exist_ok=True)
+
     async with aiosqlite.connect(path) as db:
         await db.executescript(SCHEMA)
         await db.commit()

@@ -12,6 +12,7 @@ import uvicorn
 from fastapi import FastAPI, Request, Header, Depends
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from contextlib import asynccontextmanager
 
 from .settings import settings
 from .cors import add_cors
@@ -26,7 +27,14 @@ from .models import (
 from .api import router as api_router
 
 
-app = FastAPI(title=settings.APP_NAME)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    await init_db()
+    yield
+    # Shutdown (if needed)
+
+app = FastAPI(title=settings.APP_NAME, lifespan=lifespan)
 
 # Add CORS middleware
 add_cors(app, settings)
@@ -97,12 +105,7 @@ async def auth_telegram_redirect():
 # Mount API routes
 app.include_router(api_router)
 
-# Initialize app
-@app.on_event("startup")
-async def startup_event():
-    """Run startup tasks."""
-    # Initialize database
-    await init_db()
+# Startup event moved to lifespan context manager above
 
 # Run standalone
 if __name__ == "__main__":

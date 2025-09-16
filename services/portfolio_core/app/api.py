@@ -162,7 +162,7 @@ async def get_portfolio_performance(
 
 @router.get("/portfolio_snapshot", response_model=OkEnvelope | ErrEnvelope)
 async def get_portfolio_snapshot(
-    period: str = Query(..., regex="^(d|w|m|y)$"),
+    period: str = Query(..., pattern="^(d|w|m|y)$"),
     uc: UserContext = Depends(user_dep),
     conn = Depends(db_dep),
 ):
@@ -180,7 +180,7 @@ async def get_portfolio_snapshot(
 
 @router.get("/portfolio_summary", response_model=OkEnvelope | ErrEnvelope)
 async def get_portfolio_summary(
-    period: str = Query(..., regex="^(d|w|m|y)$"),
+    period: str = Query(..., pattern="^(d|w|m|y)$"),
     uc: UserContext = Depends(user_dep),
     conn = Depends(db_dep),
 ):
@@ -198,7 +198,7 @@ async def get_portfolio_summary(
 
 @router.get("/portfolio_breakdown", response_model=OkEnvelope | ErrEnvelope)
 async def get_portfolio_breakdown(
-    period: str = Query(..., regex="^(d|w|m|y)$"),
+    period: str = Query(..., pattern="^(d|w|m|y)$"),
     uc: UserContext = Depends(user_dep),
     conn = Depends(db_dep),
 ):
@@ -216,7 +216,7 @@ async def get_portfolio_breakdown(
 
 @router.get("/portfolio_digest", response_model=OkEnvelope | ErrEnvelope)
 async def get_portfolio_digest(
-    period: str = Query(..., regex="^(d|w|m|y)$"),
+    period: str = Query(..., pattern="^(d|w|m|y)$"),
     uc: UserContext = Depends(user_dep),
     conn = Depends(db_dep),
 ):
@@ -390,7 +390,7 @@ async def get_transactions(
 
 @router.get("/portfolio_snapshot", response_model=OkEnvelope | ErrEnvelope)
 async def get_portfolio_snapshot(
-    period: str = Query(..., regex="^(d|w|m|y)$"),
+    period: str = Query(..., pattern="^(d|w|m|y)$"),
     uc: UserContext = Depends(user_dep),
     conn = Depends(db_dep),
 ):
@@ -408,7 +408,7 @@ async def get_portfolio_snapshot(
 
 @router.get("/portfolio_summary", response_model=OkEnvelope | ErrEnvelope)
 async def get_portfolio_summary(
-    period: str = Query(..., regex="^(d|w|m|y)$"),
+    period: str = Query(..., pattern="^(d|w|m|y)$"),
     uc: UserContext = Depends(user_dep),
     conn = Depends(db_dep),
 ):
@@ -426,7 +426,7 @@ async def get_portfolio_summary(
 
 @router.get("/portfolio_breakdown", response_model=OkEnvelope | ErrEnvelope)
 async def get_portfolio_breakdown(
-    period: str = Query(..., regex="^(d|w|m|y)$"),
+    period: str = Query(..., pattern="^(d|w|m|y)$"),
     uc: UserContext = Depends(user_dep),
     conn = Depends(db_dep),
 ):
@@ -444,7 +444,7 @@ async def get_portfolio_breakdown(
 
 @router.get("/portfolio_digest", response_model=OkEnvelope | ErrEnvelope)
 async def get_portfolio_digest(
-    period: str = Query(..., regex="^(d|w|m|y)$"),
+    period: str = Query(..., pattern="^(d|w|m|y)$"),
     uc: UserContext = Depends(user_dep),
     conn = Depends(db_dep),
 ):
@@ -495,7 +495,7 @@ async def edit_allocation(
 
 @router.get("/portfolio_movers", response_model=OkEnvelope | ErrEnvelope)
 async def get_portfolio_movers(
-    period: str = Query(..., regex="^(d|w|m|y)$"),
+    period: str = Query(..., pattern="^(d|w|m|y)$"),
     uc: UserContext = Depends(user_dep),
     conn = Depends(db_dep),
 ):
@@ -512,7 +512,7 @@ async def get_portfolio_movers(
 @router.get("/po_if", response_model=OkEnvelope | ErrEnvelope)
 async def portfolio_what_if(
     symbol: Optional[str] = Query(None),
-    pick: Optional[str] = Query(None, regex="^(stocks|etf|crypto)$"),
+    pick: Optional[str] = Query(None, pattern="^(stocks|etf|crypto)$"),
     pct_change: Decimal = Query(...),
     uc: UserContext = Depends(user_dep),
     conn = Depends(db_dep),

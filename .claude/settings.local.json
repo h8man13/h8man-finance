@@ -4,7 +4,20 @@
       "Bash(python -m pytest tests/ -v --tb=short)",
       "Bash(find:*)",
       "Bash(grep:*)",
-      "Bash(python test:*)"
+      "Bash(python test:*)",
+      "Bash(python -m pytest tests/ -v)",
+      "Bash(docker-compose run:*)",
+      "Bash(docker compose run:*)",
+      "Bash(docker compose build:*)",
+      "Bash(python3 -m pytest tests/ -v)",
+      "Bash(where python)",
+      "Bash(wsl:*)",
+      "Bash(python3.11 -m pytest tests/ -v)",
+      "Bash(python3.10 -m pytest tests/ -v)",
+      "Bash(python3.9 -m pytest tests/ -v)",
+      "Bash(python3.11 -m pytest tests/test_telegram_integration.py -v)",
+      "Bash(python3.10 -m pytest tests/test_telegram_integration.py -v)",
+      "Bash(python3.9 -m pytest tests/test_telegram_integration.py -v)"
     ],
     "deny": [],
     "ask": []

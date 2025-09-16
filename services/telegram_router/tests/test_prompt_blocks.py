@@ -8,5 +8,5 @@ def test_price_prompt_uses_blocks(monkeypatch):
     out = appmod.asyncio.run(appmod.process_text(chat_id=8101, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/price", ctx=ctx))
     assert out and out[0]
     low = out[0].lower()
-    assert "what symbols" in low
+    assert "what tickers should i check" in low
     assert "example:" in low

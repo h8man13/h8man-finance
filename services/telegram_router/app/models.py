@@ -13,7 +13,10 @@ class TelegramChat(BaseModel):
 class TelegramUser(BaseModel):
     id: int
     is_bot: Optional[bool] = False
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     username: Optional[str] = None
+    language_code: Optional[str] = None
 
 
 class TelegramMessage(BaseModel):

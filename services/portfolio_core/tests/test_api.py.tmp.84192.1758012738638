@@ -11,8 +11,6 @@ from app.db import init_db
 @pytest.fixture
 def client():
     """Test client fixture."""
-    # Initialize database before creating test client
-    asyncio.run(init_db("/tmp/test_portfolio.db"))
     return TestClient(app)
 
 

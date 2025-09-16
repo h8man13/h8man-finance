@@ -5,12 +5,14 @@ def test_test_endpoint_sends_and_fx_format(client, monkeypatch, capture_telegram
     # Make sure dispatcher returns a fixed FX rate
     import app.app as appmod  # type: ignore
 
-    async def _fake_dispatch(spec, args):
+    async def _fake_dispatch_func(spec, args, user_context=None):
         if spec.get("service") == "fx":
             return {"ok": True, "data": {"rate": 1.1111}}
         return {"ok": True, "data": {}}
 
-    monkeypatch.setattr(appmod.Dispatcher, "dispatch", lambda self, spec, args: _fake_dispatch(spec, args))
+    async def _async_fake_dispatch(self, spec, args, user_context=None):
+        return await _fake_dispatch_func(spec, args, user_context)
+    monkeypatch.setattr(appmod.Dispatcher, "dispatch", _async_fake_dispatch)
 
     r = client.post("/telegram/test", json={"chat_id": 1001, "text": "/fx eur usd"})
     assert r.status_code == 200 and r.json()["ok"] is True
@@ -54,10 +56,12 @@ def test_session_flow_buy_prompt_and_merge(monkeypatch):
     s, registry, sessions, idemp, dispatcher, http = ctx
 
     # Make dispatcher succeed for buy
-    async def _fake_dispatch(spec, args):
+    async def _fake_dispatch_func(spec, args, user_context=None):
         return {"ok": True, "data": {}}
 
-    monkeypatch.setattr(appmod.Dispatcher, "dispatch", lambda self, spec, args: _fake_dispatch(spec, args))
+    async def _async_fake_dispatch(self, spec, args, user_context=None):
+        return await _fake_dispatch_func(spec, args, user_context)
+    monkeypatch.setattr(appmod.Dispatcher, "dispatch", _async_fake_dispatch)
 
     # 1) User starts with incomplete command -> prompt usage, session created
     out1 = appmod.asyncio.run(appmod.process_text(chat_id=2001, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/buy", ctx=ctx))
@@ -78,7 +82,7 @@ def test_price_table_output(monkeypatch):
     s, registry, sessions, idemp, dispatcher, http = ctx
 
     # Mock quotes from market data
-    async def _fake_dispatch(spec, args):
+    async def _fake_dispatch_func(spec, args, user_context=None):
         if spec.get("service") == "market_data":
             return {
                 "ok": True,
@@ -91,7 +95,9 @@ def test_price_table_output(monkeypatch):
             }
         return {"ok": True, "data": {}}
 
-    monkeypatch.setattr(appmod.Dispatcher, "dispatch", lambda self, spec, args: _fake_dispatch(spec, args))
+    async def _async_fake_dispatch(self, spec, args, user_context=None):
+        return await _fake_dispatch_func(spec, args, user_context)
+    monkeypatch.setattr(appmod.Dispatcher, "dispatch", _async_fake_dispatch)
 
     out = appmod.asyncio.run(appmod.process_text(chat_id=3001, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/price aapl bmw.de", ctx=ctx))
     assert out and out[0]
@@ -110,18 +116,20 @@ def test_price_interactive_flow_with_footnote(monkeypatch):
 
     # 1) Start interactive with no symbols
     out1 = appmod.asyncio.run(appmod.process_text(chat_id=3101, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/price", ctx=ctx))
-    assert out1 and "what symbols" in out1[0].lower()
+    assert out1 and "what tickers should i check" in out1[0].lower()
     assert sessions.get(3101) and sessions.get(3101).get("cmd") == "/price"
 
     # 2) Provide symbols and expect table + interactive footnote
-    async def _fake_dispatch(spec, args):
+    async def _fake_dispatch_func(spec, args, user_context=None):
         if spec.get("service") == "market_data":
             return {"ok": True, "data": {"quotes": [
                 {"symbol": "AAPL.US", "price_eur": 100.0, "open_eur": 95.0, "market": "US", "provider": "EODHD", "freshness": "Live"},
             ]}}
         return {"ok": True, "data": {}}
 
-    monkeypatch.setattr(appmod.Dispatcher, "dispatch", lambda self, spec, args: _fake_dispatch(spec, args))
+    async def _async_fake_dispatch(self, spec, args, user_context=None):
+        return await _fake_dispatch_func(spec, args, user_context)
+    monkeypatch.setattr(appmod.Dispatcher, "dispatch", _async_fake_dispatch)
 
     out2 = appmod.asyncio.run(appmod.process_text(chat_id=3101, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="aapl", ctx=ctx))
     assert out2 and out2[0]
@@ -142,14 +150,16 @@ def test_price_one_shot_no_interactive_hint(monkeypatch):
     ctx = deps()
     s, registry, sessions, idemp, dispatcher, http = ctx
 
-    async def _fake_dispatch(spec, args):
+    async def _fake_dispatch_func(spec, args, user_context=None):
         if spec.get("service") == "market_data":
             return {"ok": True, "data": {"quotes": [
                 {"symbol": "AAPL.US", "price_eur": 100.0, "open_eur": 95.0, "market": "US", "provider": "EODHD", "freshness": "Live"},
             ]}}
         return {"ok": True, "data": {}}
 
-    monkeypatch.setattr(appmod.Dispatcher, "dispatch", lambda self, spec, args: _fake_dispatch(spec, args))
+    async def _async_fake_dispatch(self, spec, args, user_context=None):
+        return await _fake_dispatch_func(spec, args, user_context)
+    monkeypatch.setattr(appmod.Dispatcher, "dispatch", _async_fake_dispatch)
 
     out = appmod.asyncio.run(appmod.process_text(chat_id=3201, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/price aapl", ctx=ctx))
     assert out and out[0]
@@ -182,12 +192,14 @@ def test_fx_default_no_args(monkeypatch):
     ctx = deps()
     s, registry, sessions, idemp, dispatcher, http = ctx
 
-    async def _fake_dispatch(spec, args):
+    async def _fake_dispatch_func(spec, args, user_context=None):
         if spec.get("service") == "fx":
             return {"ok": True, "data": {"pair": "USD_EUR", "rate": 1.1}}
         return {"ok": True, "data": {}}
 
-    monkeypatch.setattr(appmod.Dispatcher, "dispatch", lambda self, spec, args: _fake_dispatch(spec, args))
+    async def _async_fake_dispatch(self, spec, args, user_context=None):
+        return await _fake_dispatch_func(spec, args, user_context)
+    monkeypatch.setattr(appmod.Dispatcher, "dispatch", _async_fake_dispatch)
 
     out = appmod.asyncio.run(appmod.process_text(chat_id=3401, sender_id=(s.owner_ids[0] if s.owner_ids else 0), text="/fx", ctx=ctx))
     assert out and out[0]

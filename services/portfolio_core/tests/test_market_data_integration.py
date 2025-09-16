@@ -2,14 +2,14 @@
 import pytest
 from unittest.mock import AsyncMock, patch
 
-from app.clients.market_data import MarketDataClient
+from app.adapters.market_data_client import MarketDataClient
 from app.services.portfolio import PortfolioService
 
 
 @pytest.fixture
 def mock_market_data():
     """Mock market data client."""
-    with patch('app.clients.market_data.MarketDataClient') as mock:
+    with patch('app.adapters.market_data_client.MarketDataClient') as mock:
         client = mock.return_value
         client.get_latest_price = AsyncMock()
         client.get_exchange_rate = AsyncMock()
