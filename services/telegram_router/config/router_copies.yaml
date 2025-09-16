@@ -1,0 +1,77 @@
+# Copy text for telegram_router responses
+# Keep messages short, friendly, and consistent with /price tone
+
+# Portfolio command messages
+portfolio:
+  empty_guidance: "Your portfolio is empty. Get started by adding positions or cash to track your investments."
+
+# Add command messages
+add:
+  success: "Added {qty} shares of {symbol} to your portfolio"
+  missing_qty: "Enter quantity, symbol, and asset type"
+  missing_symbol: "Enter the symbol (e.g. AAPL, NVDA)"
+  missing_asset_class: "Enter asset type: stock, etf, or crypto"
+  invalid_asset_class: "Asset type must be stock, etf, or crypto"
+
+# Remove command messages
+remove:
+  success: "Removed all {symbol} positions from your portfolio"
+  missing_symbol: "Enter the symbol to remove (e.g. AAPL)"
+  not_owned: "You do not hold {symbol} in this portfolio"
+
+# Cash command messages
+cash:
+  no_balance: "You currently have no cash"
+
+cash_add:
+  success: "Added {amount} to your cash balance"
+  missing_amount: "Enter amount to add (e.g. 1000)"
+
+cash_remove:
+  success: "Removed {amount} from your cash balance"
+  missing_amount: "Enter amount to remove (e.g. 500)"
+  confirm: "Confirm removing {amount} from cash, Y or N?"
+  cancelled: "Cash removal cancelled"
+  insufficient: "Insufficient cash balance. You have {current_balance}"
+
+# Buy/Sell command messages
+buy:
+  success: "Bought {qty} shares of {symbol} at {price_ccy}"
+  missing_qty: "Enter quantity to buy"
+  missing_symbol: "Enter symbol to buy"
+  missing_price: "Enter price per share"
+
+sell:
+  success: "Sold {qty} shares of {symbol} at {price_ccy}"
+  missing_qty: "Enter quantity to sell"
+  missing_symbol: "Enter symbol to sell"
+  not_owned: "You do not hold {symbol} in this portfolio"
+  insufficient: "You only hold {available_qty} shares of {symbol}"
+
+# Allocation command messages
+allocation_edit:
+  success: "Updated allocation targets"
+  missing_percentages: "Send three numbers that sum to 100: Stock ETF Crypto"
+  invalid_sum: "Percentages must sum to 100. You entered {total}"
+
+# Rename command messages
+rename:
+  success: "Renamed {symbol} to {nickname}"
+  missing_symbol: "Enter symbol to rename"
+  missing_nickname: "Enter new nickname"
+  not_owned: "You do not hold {symbol} in this portfolio"
+
+# Transaction command messages
+transactions:
+  no_transactions: "You have no transactions yet. Start building your portfolio with /add, /buy, or /cash_add"
+  invalid_limit: "Use /tx or /tx N where N is a number up to 50"
+
+# General error messages
+errors:
+  invalid_number: "'{value}' is not a valid number"
+  invalid_symbol: "'{value}' is not a valid symbol"
+  service_unavailable: "Service temporarily unavailable. Please try again"
+
+# Confirmation prompts
+confirmations:
+  cash_remove: "Confirm removing {amount} from cash, Y or N?"

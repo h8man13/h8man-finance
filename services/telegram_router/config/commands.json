@@ -94,6 +94,16 @@
       "help": {"usage": "[amount]", "example": "1000"}
     },
     {
+      "name": "/cash_remove",
+      "aliases": [],
+      "description": "Remove cash from portfolio",
+      "args_schema": [
+        {"name": "amount", "type": "number", "required": false}
+      ],
+      "dispatch": {"service": "portfolio_core", "method": "POST", "path": "/cash_remove", "args_map": {"amount": "amount"}},
+      "help": {"usage": "[amount]", "example": "500"}
+    },
+    {
       "name": "/buy",
       "aliases": ["/b"],
       "description": "Record a buy fill",

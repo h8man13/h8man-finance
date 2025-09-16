@@ -105,7 +105,7 @@ services:
   sqliteweb_portfolio:
     image: coleifer/sqlite-web:latest
     ports:
-      - "127.0.0.1:8083:8080"
+      - "127.0.0.1:8094:8080"
     volumes:
       - portfolio_core_data:/data
     command: ["sh","-c","test -f /data/portfolio.db && sqlite_web -H 0.0.0.0 /data/portfolio.db || sqlite_web -H 0.0.0.0 /data"]

@@ -17,7 +17,15 @@
       "Bash(python3.9 -m pytest tests/ -v)",
       "Bash(python3.11 -m pytest tests/test_telegram_integration.py -v)",
       "Bash(python3.10 -m pytest tests/test_telegram_integration.py -v)",
-      "Bash(python3.9 -m pytest tests/test_telegram_integration.py -v)"
+      "Bash(python3.9 -m pytest tests/test_telegram_integration.py -v)",
+      "Bash(docker-compose:*)",
+      "Bash(docker:*)",
+      "Bash(.venv/Scripts/python.exe:*)",
+      "Bash(source:*)",
+      "Bash(python3:*)",
+      "Bash(del:*)",
+      "Bash(python -m pytest -q services/market_data)",
+      "Bash(timeout 120 docker-compose exec portfolio_core pytest -q tests/ --tb=no)"
     ],
     "deny": [],
     "ask": []

@@ -333,6 +333,32 @@ async def add_cash(
         return err("INTERNAL", str(e), "portfolio_core")
 
 
+@router.post("/cash_remove", response_model=OkEnvelope | ErrEnvelope)
+async def remove_cash(
+    amount: Optional[Decimal] = Query(None),
+    uc: UserContext = Depends(user_dep),
+    conn = Depends(db_dep),
+):
+    """Remove cash (Telegram /cash_remove command)."""
+    try:
+        if amount is None:
+            return err("BAD_INPUT", "amount parameter is required", "portfolio_core")
+
+        await upsert_user(conn, uc.model_dump())
+        portfolio_service = PortfolioService(conn, uc)
+
+        # Check current balance
+        current_balance = await portfolio_service.get_cash_balance()
+        if current_balance < amount:
+            return err("INSUFFICIENT_FUNDS", f"Insufficient cash balance. Current: {current_balance}", "portfolio_core")
+
+        # Remove cash (negative amount)
+        result = await portfolio_service.update_cash(-amount)
+        return ok({"cash_balance": result, "removed": amount})
+    except Exception as e:
+        return err("INTERNAL", str(e), "portfolio_core")
+
+
 @router.post("/buy", response_model=OkEnvelope | ErrEnvelope)
 async def buy_position(
     qty: Optional[Decimal] = Query(None),

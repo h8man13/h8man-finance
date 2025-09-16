@@ -16,8 +16,7 @@ def client():
     return TestClient(app)
 
 
-@pytest.mark.asyncio
-async def test_admin_health_endpoint(client):
+def test_admin_health_endpoint(client):
     """Test admin health endpoint."""
     with patch('app.api.fx_client') as mock_fx, \
          patch('app.api.market_data_client') as mock_md:
@@ -37,11 +36,12 @@ async def test_admin_health_endpoint(client):
         assert response.status_code == 200
 
         data = response.json()
-        assert data["ok"] is True
-        assert "database" in data["data"]
-        assert "fx_service" in data["data"]
-        assert "market_data_service" in data["data"]
-        assert data["data"]["database"]["healthy"] is True
+        print(f"Response data: {data}")  # Debug output
+        assert data.get("ok") is True
+        assert "database" in data.get("data", {})
+        assert "fx_service" in data.get("data", {})
+        assert "market_data_service" in data.get("data", {})
+        assert data.get("data", {}).get("database", {}).get("healthy") is True
 
 
 def test_run_snapshots_endpoint_no_users(client):

@@ -58,14 +58,16 @@ def user_context():
 
 
 @pytest.fixture
-def portfolio_service(db_connection, user_context):
+async def portfolio_service(db_connection, user_context):
     """Portfolio service fixture."""
+    # db_connection yields the actual connection
     return PortfolioService(db_connection, user_context)
 
 
 @pytest.fixture
-def analytics_service(db_connection, user_context):
+async def analytics_service(db_connection, user_context):
     """Analytics service fixture."""
+    # db_connection yields the actual connection
     return AnalyticsService(db_connection, user_context)
 
 
@@ -95,3 +97,22 @@ def mock_adapters():
         mock_md.clear_cache = AsyncMock()
 
         yield {"fx": mock_fx, "market_data": mock_md}
+
+
+# Add aliases for backward compatibility
+@pytest.fixture
+async def db(db_connection):
+    """Alias for db_connection fixture."""
+    return db_connection
+
+
+@pytest.fixture
+def test_user(user_context):
+    """Alias for user_context fixture."""
+    return user_context
+
+
+@pytest.fixture
+def market_data_mock(mock_adapters):
+    """Market data mock fixture."""
+    return mock_adapters["market_data"]

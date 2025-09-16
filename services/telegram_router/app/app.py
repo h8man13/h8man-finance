@@ -216,6 +216,7 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
     should_prompt_when_empty = spec.args_schema and spec.name not in ["/tx", "/portfolio_snapshot", "/portfolio_summary", "/portfolio_breakdown", "/portfolio_digest", "/portfolio_movers"]
     user_provided_no_args = not tokens and not (existing and existing.get("got"))
 
+
     if missing or (should_prompt_when_empty and user_provided_no_args):
         # For /price, start a sticky session so user can keep sending symbols
         sticky = (spec.name == "/price")
@@ -490,21 +491,87 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
         sessions.clear(chat_id)
         return [p for p in pages]
 
-    # Special handling for /portfolio when empty
-    elif spec.name == "/portfolio":
-        # Check if portfolio is empty by looking at the response data
-        portfolio_data = resp.get("data", {}).get("portfolio", {})
-        positions = portfolio_data.get("positions", [])
-        cash_balance = portfolio_data.get("cash_balance_eur", 0)
 
-        # If no positions and no cash, show guidance for new users
-        if not positions and (cash_balance == 0 or cash_balance is None):
+    # Portfolio read commands with table formatting
+    elif spec.name == "/portfolio":
+        data = resp.get("data", {}).get("portfolio", {})
+        positions = data.get("positions", [])
+        cash_balance = data.get("cash_balance_eur", 0)
+
+        # Handle empty portfolio case
+        if not positions and (not cash_balance or cash_balance <= 0):
             pages = render_screen(ui, "portfolio_empty", {})
             return [p for p in pages]
 
-    # For read-only portfolio commands, display the service response as formatted JSON
-    if spec.name in ["/cash", "/allocation", "/tx", "/portfolio_snapshot", "/portfolio_summary",
-                     "/portfolio_breakdown", "/portfolio_digest", "/portfolio_movers", "/po_if", "/portfolio"]:
+        # Format portfolio table using existing functions
+        rows = []
+        total_value = float(cash_balance) if cash_balance else 0.0
+
+        # Add position rows (will need market data enrichment)
+        for pos in positions:
+            symbol = pos.get("symbol", "")
+            asset_class = pos.get("type", "").upper()
+            qty = pos.get("qty", 0)
+            # TODO: Add market data lookup for current prices
+            # For now, show basic info
+            rows.append([symbol, asset_class, "-", str(qty), "N/A", "N/A"])
+
+        # Add cash row if positive
+        if cash_balance and cash_balance > 0:
+            cash_formatted = euro(cash_balance)
+            rows.append(["CASH", "CASH", "-", "1.00", cash_formatted, cash_formatted])
+
+        total_formatted = euro(total_value)
+        table_data = {"total_value": total_formatted, "table_rows": rows}
+        pages = render_screen(ui, "portfolio_result", table_data)
+        return [p for p in pages]
+
+    elif spec.name == "/cash":
+        balance = resp.get("data", {}).get("cash_balance", 0)
+        balance_formatted = euro(balance) if balance else "€0.00"
+        pages = render_screen(ui, "cash_result", {"cash_balance": balance_formatted})
+        return [p for p in pages]
+
+    elif spec.name == "/tx":
+        transactions = resp.get("data", {}).get("transactions", [])
+        count = len(transactions)
+        limit = values.get("n", 10)
+
+        if not transactions:
+            return ["You have no transactions yet. Start building your portfolio with `/add`, `/buy`, or `/cash_add`."]
+
+        # Format transaction table
+        rows = []
+        for tx in transactions:
+            time_str = tx.get('created_at', '')[:10] if tx.get('created_at') else 'N/A'
+            tx_type = tx.get('type', 'N/A').upper()
+            symbol = tx.get('symbol', 'CASH') if tx.get('symbol') else 'CASH'
+            qty = str(tx.get('qty', '')) if tx.get('qty') else ''
+            amount_eur = euro(tx.get('amount_eur', 0)) if tx.get('amount_eur') else ''
+            rows.append([time_str, tx_type, symbol, qty, amount_eur])
+
+        summary = f"You have {count} transaction{'s' if count != 1 else ''}:"
+        table_data = {"transaction_summary": summary, "table_rows": rows}
+        pages = render_screen(ui, "tx_result", table_data)
+        return [p for p in pages]
+
+    elif spec.name == "/allocation":
+        allocation_data = resp.get("data", {}).get("allocation", {})
+        current = allocation_data.get("current", {})
+        target = allocation_data.get("target", {})
+
+        # Format allocation table
+        rows = [
+            ["Current", f"{current.get('stock', 0):.0f}%", f"{current.get('etf', 0):.0f}%", f"{current.get('crypto', 0):.0f}%"],
+            ["Target", f"{target.get('stock', 0):.0f}%", f"{target.get('etf', 0):.0f}%", f"{target.get('crypto', 0):.0f}%"]
+        ]
+
+        pages = render_screen(ui, "allocation_result", {"table_rows": rows})
+        return [p for p in pages]
+
+    # For other read-only portfolio commands, display the service response as formatted JSON (temporary)
+    elif spec.name in ["/portfolio_snapshot", "/portfolio_summary",
+                       "/portfolio_breakdown", "/portfolio_digest", "/portfolio_movers", "/po_if"]:
         # Format the JSON response nicely for display
         import json
         data = resp.get("data", {})

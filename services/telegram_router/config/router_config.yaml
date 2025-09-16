@@ -1,0 +1,19 @@
+# Router configuration for display settings
+
+# Benchmark symbols to show in portfolio table
+benchmarks:
+  - label: "Core S&P 500"
+    symbol: "CSSPX"
+  - label: "Gold"
+    symbol: "IGLN"
+
+# Session settings
+session:
+  ttl_minutes: 5
+  sticky_commands: ["/price"]
+
+# Table formatting
+table:
+  max_symbol_width: 12
+  currency_decimals: 2
+  percentage_decimals: 1

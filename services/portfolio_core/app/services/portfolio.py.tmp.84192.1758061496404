@@ -544,13 +544,13 @@ class PortfolioService:
             """,
             (
                 self.user.user_id,
-                symbol,
-                market,
+                meta["symbol"],
+                meta["market"],
                 asset_class,
                 qty,
                 price_ccy,
                 price_eur,
-                "USD",  # Default currency
+                meta["currency"],
             ),
         ):
             await self.db.commit()

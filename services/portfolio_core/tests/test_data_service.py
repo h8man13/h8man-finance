@@ -303,10 +303,12 @@ async def test_clear_caches(data_service):
     with patch('app.services.data_service.fx_client') as mock_fx, \
          patch('app.services.data_service.market_data_client') as mock_md:
 
-        mock_fx.cache = {"test": "entry"}
+        # Create a mock cache with a clear method
+        mock_cache = MagicMock()
+        mock_fx.cache = mock_cache
         mock_md.clear_cache = AsyncMock()
 
         await data_service.clear_caches()
 
-        mock_fx.cache.clear.assert_called_once()
+        mock_cache.clear.assert_called_once()
         mock_md.clear_cache.assert_called_once()

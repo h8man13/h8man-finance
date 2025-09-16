@@ -368,5 +368,32 @@ screens:
       - spacer: { lines: 1 }
       - paragraph: "Once you have some positions, use `/portfolio` to see your holdings and performance."
 
+  # /portfolio – portfolio result with positions table
+  portfolio_result:
+    blocks:
+      - paragraph: "*Total Portfolio Value: {total_value}*"
+      - spacer: { lines: 1 }
+      - table:
+          rows: "{table_rows}"
+
+  # /cash – cash balance result
+  cash_result:
+    blocks:
+      - paragraph: "Cash balance: {cash_balance}"
+
+  # /tx – transaction history result
+  tx_result:
+    blocks:
+      - paragraph: "{transaction_summary}"
+      - spacer: { lines: 1 }
+      - table:
+          rows: "{table_rows}"
+
+  # /allocation – allocation comparison result
+  allocation_result:
+    blocks:
+      - table:
+          rows: "{table_rows}"
+
 
 
