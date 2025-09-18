@@ -413,6 +413,8 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
 
     if dispatch_override is None:
         values, missing, err = validate_args(spec.args_schema, tokens, got=got, cmd_name=spec.name)
+        print(f"[VALIDATION] cmd={spec.name}, args_schema={spec.args_schema}, tokens={tokens}, got={got}")
+        print(f"[VALIDATION] result: values={values}, missing={missing}, err={err}")
     else:
         tokens = []
     if err:
