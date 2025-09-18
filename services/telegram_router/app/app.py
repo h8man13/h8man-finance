@@ -4,8 +4,10 @@ import asyncio
 import json
 import logging
 import os
+import uuid
 import time
 from typing import Any, Dict, List, Optional, Tuple
+from decimal import Decimal, InvalidOperation
 
 import httpx
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request
@@ -62,6 +64,189 @@ def setup_logging(level: str):
 def json_log(**kwargs):
     print(json.dumps(kwargs, ensure_ascii=False))
 
+def _decimal_str(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    try:
+        return str(Decimal(str(value)))
+    except Exception:
+        return None
+
+
+def _prepare_portfolio_payload(command: str, values: Dict[str, Any]) -> Dict[str, Any]:
+    prepared: Dict[str, Any] = {}
+    name = command.lower()
+    if name in ("/add", "/buy", "/sell"):
+        qty = _decimal_str(values.get("qty"))
+        if qty is not None:
+            prepared["qty"] = qty
+            values["qty"] = qty
+        symbol = values.get("symbol")
+        if symbol:
+            prepared["symbol"] = str(symbol).strip().upper()
+            values["symbol"] = prepared["symbol"]
+        if name == "/add":
+            asset_class = values.get("asset_class")
+            if asset_class:
+                prepared["asset_class"] = str(asset_class).lower()
+        if name in ("/buy", "/sell"):
+            price = values.get("price_eur")
+            price_str = _decimal_str(price)
+            if price_str is not None:
+                prepared["price_eur"] = price_str
+                values["price_eur"] = price_str
+            fees = values.get("fees_eur")
+            fees_str = _decimal_str(fees)
+            if fees_str is not None:
+                prepared["fees_eur"] = fees_str
+                values["fees_eur"] = fees_str
+        return prepared
+    if name in ("/remove", "/rename"):
+        symbol = values.get("symbol")
+        if symbol:
+            prepared["symbol"] = str(symbol).strip().upper()
+            values["symbol"] = prepared["symbol"]
+        if name == "/rename":
+            display_name = values.get("display_name")
+            if display_name:
+                prepared["display_name"] = str(display_name).strip()
+                values["display_name"] = prepared["display_name"]
+        return prepared
+    if name in ("/cash_add", "/cash_remove"):
+        amount = _decimal_str(values.get("amount_eur"))
+        if amount is not None:
+            prepared["amount_eur"] = amount
+            values["amount_eur"] = amount
+        return prepared
+    if name == "/allocation_edit":
+        for key in ("stock_pct", "etf_pct", "crypto_pct"):
+            if values.get(key) is not None:
+                prepared[key] = int(values[key])
+                values[key] = prepared[key]
+        return prepared
+    if name == "/tx":
+        if values.get("limit") is not None:
+            prepared["limit"] = int(values["limit"])
+            values["limit"] = prepared["limit"]
+        return prepared
+    if name == "/po_if":
+        scope = values.get("scope")
+        if scope:
+            prepared["scope"] = str(scope).strip()
+            values["scope"] = prepared["scope"]
+        delta = values.get("delta_pct")
+        delta_str = _decimal_str(delta)
+        if delta_str is not None:
+            prepared["delta_pct"] = delta_str
+            values["delta_pct"] = delta_str
+        return prepared
+    return {k: v for k, v in values.items() if v is not None}
+
+
+def _to_decimal(value: Any, default: Decimal | None = None) -> Decimal:
+    if default is None:
+        default = Decimal("0")
+    try:
+        if value is None:
+            return default
+        if isinstance(value, Decimal):
+            return value
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return default
+
+def _format_quantity(value: Any) -> str:
+    dec = _to_decimal(value)
+    if dec == 0:
+        return "0"
+    s = format(dec.normalize(), "f")
+    if "." in s:
+        s = s.rstrip("0").rstrip(".")
+    return s or "0"
+
+def _format_percent(value: Any) -> str:
+    dec = _to_decimal(value)
+    try:
+        return f"{int(dec)}%"
+    except (ValueError, TypeError):
+        return f"{dec}%"
+
+def _format_eur(value: Any) -> str:
+    dec = _to_decimal(value)
+    return euro(float(dec))
+
+
+def _portfolio_table_pages(ui: Dict[str, Any], portfolio: Dict[str, Any] | None) -> List[str]:
+    if not ui or portfolio is None:
+        return []
+
+    holdings = portfolio.get("holdings") or []
+    cash_dec = _to_decimal(portfolio.get("cash_eur"))
+
+    if not holdings and cash_dec == 0:
+        pages = render_screen(ui, "portfolio_empty", {})
+        return [p for p in pages] if pages else []
+
+    rows: List[List[str]] = [[
+        "Ticker",
+        "Asset class",
+        "Market",
+        "Quantity",
+        "Price EUR",
+        "Value EUR",
+    ]]
+
+    holdings_total = Decimal("0")
+    for holding in holdings:
+        symbol = str(holding.get("symbol") or "").upper()
+        display_name = holding.get("display_name")
+        ticker = symbol if not display_name else f"{symbol} ({display_name})"
+        asset_class = (holding.get("asset_class") or "-").lower()
+        market = (holding.get("market") or "-").upper()
+        qty = _format_quantity(holding.get("qty_total"))
+        price = "-" if holding.get("price_eur") is None else _format_eur(holding.get("price_eur"))
+        value_dec = _to_decimal(holding.get("value_eur"))
+        value = _format_eur(value_dec)
+        holdings_total += value_dec
+        rows.append([ticker, asset_class, market, qty, price, value])
+
+    if cash_dec > 0:
+        cash_display = _format_eur(cash_dec)
+        rows.append(["Cash", "cash", "-", "-", cash_display, cash_display])
+
+    total_dec = _to_decimal(portfolio.get("total_value_eur"), default=holdings_total + cash_dec)
+    data = {"total_value": _format_eur(total_dec), "table_rows": rows}
+    pages = render_screen(ui, "portfolio_result", data)
+    return [p for p in pages] if pages else []
+
+
+def _portfolio_pages_with_fallback(ui: Dict[str, Any], portfolio: Dict[str, Any] | None) -> List[str]:
+    pages = _portfolio_table_pages(ui, portfolio)
+    if pages:
+        return pages
+    fallback = render_screen(ui, "portfolio_empty", {})
+    return [p for p in fallback] if fallback else []
+
+
+def _allocation_rows(entries: List[Tuple[str, Dict[str, Any]]]) -> List[List[str]]:
+    rows: List[List[str]] = [["", "stock", "etf", "crypto"]]
+    for label, payload in entries:
+        payload = payload or {}
+        rows.append([
+            label,
+            _format_percent(payload.get("stock_pct")),
+            _format_percent(payload.get("etf_pct")),
+            _format_percent(payload.get("crypto_pct")),
+        ])
+    return rows
+
+
+def _allocation_table_pages(ui: Dict[str, Any], *entries: Tuple[str, Dict[str, Any]]) -> List[str]:
+    if not ui or not entries:
+        return []
+    rows = _allocation_rows(list(entries))
+    pages = render_screen(ui, "allocation_result", {"table_rows": rows})
+    return [p for p in pages] if pages else []
 
 # UI (ui.yml) is the single source of truth for rendering.
 
@@ -204,16 +389,44 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
 
     # session merge
     got = existing.get("got") if existing.get("cmd") == spec.name else {}
+    dispatch_override = None
 
-    values, missing, err = validate_args(spec.args_schema, tokens, got=got, cmd_name=spec.name)
+    if spec.name in ("/buy", "/sell") and tokens:
+        tokens = [tok for tok in tokens if tok.lower() not in ("at", "@")]
+
+    if spec.name == "/cash_remove":
+        confirm_state = existing.get("confirm")
+        if confirm_state and not (text or "").strip().startswith("/"):
+            answer_raw = (tokens[0] if tokens else (text or "")).strip().lower()
+            if answer_raw in ("y", "yes"):
+                values = dict(confirm_state.get("values", {}))
+                missing = []
+                err = None
+                dispatch_override = dict(confirm_state.get("payload", {}))
+            elif answer_raw in ("n", "no"):
+                sessions.clear(chat_id)
+                pages = render_screen(ui, "cash_remove_cancelled", confirm_state.get("ui", {}))
+                return [p for p in pages] if pages else []
+            else:
+                pages = render_screen(ui, "cash_remove_confirm", confirm_state.get("ui", {}))
+                return [p for p in pages] if pages else []
+
+    if dispatch_override is None:
+        values, missing, err = validate_args(spec.args_schema, tokens, got=got, cmd_name=spec.name)
+    else:
+        tokens = []
     if err:
         usage = spec.help.get("usage", "")
         example = spec.help.get("example", "")
         pages = render_screen(ui, "invalid_template", {"error": err, "usage": usage, "example": example})
         return [p for p in pages]
 
+    if spec.name == "/rename" and values.get("display_name"):
+        if len(tokens) >= 2:
+            values["display_name"] = " ".join(tokens[1:]).strip()
+
     # Check if this command should prompt when no user arguments provided
-    should_prompt_when_empty = spec.args_schema and spec.name not in ["/tx", "/portfolio_snapshot", "/portfolio_summary", "/portfolio_breakdown", "/portfolio_digest", "/portfolio_movers"]
+    should_prompt_when_empty = spec.args_schema and spec.name not in ["/tx", "/fx", "/portfolio_snapshot", "/portfolio_summary", "/portfolio_breakdown", "/portfolio_digest", "/portfolio_movers"]
     user_provided_no_args = not tokens and not (existing and existing.get("got"))
 
 
@@ -241,21 +454,62 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
     clear_after = True
     if spec.name == "/price" and existing and existing.get("cmd") == "/price" and existing.get("sticky"):
         clear_after = False
-    resp = await dispatcher.dispatch(spec.dispatch, values, user_context)
+    dispatch_values = dispatch_override or values
+    if spec.dispatch.get("service") == "portfolio_core" and dispatch_override is None:
+        dispatch_values = _prepare_portfolio_payload(spec.name, dict(values))
+        method = spec.dispatch.get("method", "GET").upper()
+        if method == "POST":
+            op_id = dispatch_values.get("op_id")
+            if not op_id:
+                op_id = uuid.uuid4().hex
+                dispatch_values["op_id"] = op_id
+            values["op_id"] = op_id
+        if spec.name == "/cash_remove":
+            amount_dec = _to_decimal(dispatch_values.get("amount_eur"))
+            if amount_dec <= 0:
+                usage = spec.help.get("usage", "")
+                example = spec.help.get("example", "")
+                pages = render_screen(ui, "invalid_template", {"error": "amount must be greater than 0", "usage": usage, "example": example})
+                return [p for p in pages] if pages else []
+            ui_payload = {"amount_display": _format_eur(dispatch_values.get("amount_eur"))}
+            session_data = {
+                "chat_id": chat_id,
+                "cmd": spec.name,
+                "expected": [],
+                "got": values,
+                "missing_from": [],
+                "sticky": True,
+                "confirm": {
+                    "payload": dict(dispatch_values),
+                    "values": dict(values),
+                    "ui": ui_payload,
+                },
+            }
+            sessions.set(chat_id, session_data)
+            pages = render_screen(ui, "cash_remove_confirm", ui_payload)
+            return [p for p in pages] if pages else []
+    resp = await dispatcher.dispatch(spec.dispatch, dispatch_values, user_context)
     if not isinstance(resp, dict) or not resp.get("ok", False):
         err = (resp or {}).get("error", {})
         usage = spec.help.get("usage", "")
         example = spec.help.get("example", "")
+        code = err.get("code") if isinstance(err, dict) else None
         if spec.name == "/fx":
             # Build a UI-driven message; do not leak backend text
             base = (values.get("base", "") or "").upper()
             quote = (values.get("quote", "") or "").upper()
             pages = render_screen(ui, "fx_error", {"base": base or "?", "quote": quote or "?", "usage": usage, "example": example})
             return [p for p in pages]
-        else:
-            message = err.get("message") or "Internal error"
-            pages = render_screen(ui, "service_error", {"message": message, "usage": usage, "example": example})
-            return [p for p in pages]
+        if spec.name == "/remove" and code == "NOT_FOUND":
+            symbol = (values.get("symbol") or "").upper()
+            pages = render_screen(ui, "remove_not_owned", {"symbol": symbol})
+            sessions.clear(chat_id)
+            return [p for p in pages] if pages else []
+        if spec.name == "/cash_remove":
+            sessions.clear(chat_id)
+        message = err.get("message") if isinstance(err, dict) else None
+        pages = render_screen(ui, "service_error", {"message": message or "Internal error", "usage": usage, "example": example})
+        return [p for p in pages]
 
     # success mapping by command
     if spec.name == "/price":
@@ -282,8 +536,8 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
                 pages = render_screen(ui, "price_prompt", {"ttl_min": ttl_min})
             return [p for p in pages]
 
-        # Build rows for table (compact for mobile): MKT and AGE are short
-        rows: List[List[str]] = [["TICKER", "NOW", "OPEN", "%", "MARKET", "AGE"]]
+        # Build rows for table (compact for mobile); keep headers short and uppercase
+        rows: List[List[str]] = [["TICKER", "NOW", "OPEN", "%", "MARKET", "FRESHNESS"]]
 
         def _market_label(sym: str, market_code: str) -> str:
             sfx = ""
@@ -324,7 +578,7 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
             # Fallback to suffix or code or '-'
             return sfx or code or "-"
 
-        def _age_label(fresh: str) -> str:
+        def _freshness_label(fresh: str) -> str:
             f = (fresh or "").lower()
             if "live" in f:
                 return "L"
@@ -353,8 +607,8 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
             o_txt = euro(open_eur) if open_eur is not None else "n/a"
             pct_txt = f"{pct:+.1f}%" if pct is not None else "n/a"
             market_col = _market_label(sym, market)
-            age = _age_label(str(q.get("freshness") or ""))
-            rows.append([f"{disp}{star}", n_txt, o_txt, pct_txt, market_col, age])
+            freshness = _freshness_label(str(q.get("freshness") or ""))
+            rows.append([f"{disp}{star}", n_txt, o_txt, pct_txt, market_col, freshness])
         # Choose UI screen
         partial = bool(resp.get("partial"))
         details = resp.get("error", {}).get("details", {}) if isinstance(resp.get("error"), dict) else {}
@@ -366,12 +620,19 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
         eff_failed = failed or derived_missing
         data_ui = {"table_rows": rows, "not_found_symbols": (eff_failed or [])}
         has_missing = isinstance(eff_failed, list) and len(eff_failed) > 0
-        if has_missing:
-            pages = render_screen(ui, "price_partial_error", data_ui)
-        elif partial:
-            pages = render_screen(ui, "price_partial_note", data_ui)
-        else:
-            pages = render_screen(ui, "price_result", data_ui)
+        base_screen = "price_partial_error" if has_missing else "price_partial_note" if partial else "price_result"
+        screen = base_screen
+        screen_payload = dict(data_ui)
+        if not clear_after:
+            ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
+            screen_payload["ttl_min"] = ttl_min
+            sticky_map = {
+                "price_result": "price_result_sticky",
+                "price_partial_error": "price_partial_error_sticky",
+                "price_partial_note": "price_partial_note_sticky",
+            }
+            screen = sticky_map.get(screen, screen)
+        pages = render_screen(ui, screen, screen_payload)
         text = pages[0]
         # Session handling: keep session open for any error cases (partial or missing list)
         if partial or has_missing:
@@ -411,20 +672,10 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
                     # Partial without explicit details: still inform the user
                     footnotes_common_str = mdv2_blockquote([msg_nf])
 
-        # Footnotes only in interactive mode (sticky)
-        if not clear_after:
-            # Re-render using the same base screens (they include footers)
-            ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
-            data_ui = {"table_rows": rows, "not_found_symbols": (eff_failed or []), "ttl_min": ttl_min}
-            if has_missing:
-                pages2 = render_screen(ui, "price_partial_error", data_ui)
-            elif partial:
-                pages2 = render_screen(ui, "price_partial_note", data_ui)
-            else:
-                pages2 = render_screen(ui, "price_result", data_ui)
-            text = pages2[0]
-        elif footnotes_common_str:
+        # Append partial-footnote hints only when the session closes
+        if clear_after and footnotes_common_str:
             text = f"{text}\n\n{footnotes_common_str}"
+
         return [text]
     if spec.name == "/fx":
         data = resp.get("data", {})
@@ -444,8 +695,13 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
         rate = data.get("rate") or data.get("close") or data.get("price")
         pair = (str(data.get("pair")) or "").upper()
         # fx upstream returns pair sometimes; keep inputs for clarity
-        base = (values.get("base", "") or "").upper()
-        quote = (values.get("quote", "") or "").upper()
+        base = (values.get("base", "") or data.get("base") or "").upper()
+        quote = (values.get("quote", "") or data.get("quote") or "").upper()
+        if (not base or not quote) and pair:
+            parts = pair.replace("-", "_").split("_")
+            if len(parts) == 2:
+                base = base or parts[0]
+                quote = quote or parts[1]
         # Invert if user requested EUR/USD but upstream pair is USD_EUR
         rate_disp = rate
         try:
@@ -462,7 +718,7 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
             rate_str = f"{float(rate_disp):.4f}"
         except Exception:
             rate_str = str(rate_disp)
-        pages = render_screen(ui, "fx_result", {"base": base, "quote": quote, "rate": rate_str})
+        pages = render_screen(ui, "fx_result", {"base": base or "?", "quote": quote or "?", "rate": rate_str})
         return [p for p in pages]
     # Portfolio command success screens
     if spec.name in ("/buy", "/sell"):
@@ -479,7 +735,10 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
         sessions.clear(chat_id)
         return [p for p in pages]
     elif spec.name == "/cash_add":
-        pages = render_screen(ui, "cash_add_success", values)
+        ui_values = dict(values)
+        if values.get("amount_eur") is not None:
+            ui_values["amount"] = _format_eur(values.get("amount_eur"))
+        pages = render_screen(ui, "cash_add_success", ui_values)
         sessions.clear(chat_id)
         return [p for p in pages]
     elif spec.name == "/allocation_edit":
@@ -487,88 +746,122 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
         sessions.clear(chat_id)
         return [p for p in pages]
     elif spec.name == "/rename":
-        pages = render_screen(ui, "rename_success", values)
+        rename_payload = resp.get("data", {}).get("rename", {}) or {}
+        symbol = (rename_payload.get("symbol") or values.get("symbol") or "").upper()
+        nickname_raw = rename_payload.get("display_name") or values.get("display_name") or ""
+        nickname = nickname_raw.strip()
+        pages = render_screen(ui, "rename_success", {"symbol": symbol, "nickname": nickname})
         sessions.clear(chat_id)
         return [p for p in pages]
 
 
     # Portfolio read commands with table formatting
     elif spec.name == "/portfolio":
-        data = resp.get("data", {}).get("portfolio", {})
-        positions = data.get("positions", [])
-        cash_balance = data.get("cash_balance_eur", 0)
+        return _portfolio_pages_with_fallback(ui, resp.get("data", {}))
 
-        # Handle empty portfolio case
-        if not positions and (not cash_balance or cash_balance <= 0):
-            pages = render_screen(ui, "portfolio_empty", {})
-            return [p for p in pages]
+    elif spec.name == "/add":
+        symbol = (values.get("symbol") or "").upper()
+        qty_text = _format_quantity(values.get("qty"))
+        success_pages = render_screen(ui, "add_success", {"symbol": symbol, "qty": qty_text}) or []
+        snapshot_pages = _portfolio_pages_with_fallback(ui, resp.get("data", {}))
+        sessions.clear(chat_id)
+        return success_pages + snapshot_pages
 
-        # Format portfolio table using existing functions
-        rows = []
-        total_value = float(cash_balance) if cash_balance else 0.0
+    elif spec.name == "/remove":
+        symbol = (values.get("symbol") or "").upper()
+        success_pages = render_screen(ui, "remove_success", {"symbol": symbol}) or []
+        snapshot_pages = _portfolio_pages_with_fallback(ui, resp.get("data", {}))
+        sessions.clear(chat_id)
+        return success_pages + snapshot_pages
 
-        # Add position rows (will need market data enrichment)
-        for pos in positions:
-            symbol = pos.get("symbol", "")
-            asset_class = pos.get("type", "").upper()
-            qty = pos.get("qty", 0)
-            # TODO: Add market data lookup for current prices
-            # For now, show basic info
-            rows.append([symbol, asset_class, "-", str(qty), "N/A", "N/A"])
+    elif spec.name == "/cash_add":
+        amount_display = _format_eur(values.get("amount_eur"))
+        success_pages = render_screen(ui, "cash_add_success", {"amount_display": amount_display}) or []
+        snapshot_pages = _portfolio_pages_with_fallback(ui, resp.get("data", {}))
+        sessions.clear(chat_id)
+        return success_pages + snapshot_pages
 
-        # Add cash row if positive
-        if cash_balance and cash_balance > 0:
-            cash_formatted = euro(cash_balance)
-            rows.append(["CASH", "CASH", "-", "1.00", cash_formatted, cash_formatted])
+    elif spec.name == "/cash_remove":
+        amount_display = _format_eur(values.get("amount_eur"))
+        success_pages = render_screen(ui, "cash_remove_success", {"amount_display": amount_display}) or []
+        snapshot_pages = _portfolio_pages_with_fallback(ui, resp.get("data", {}))
+        sessions.clear(chat_id)
+        return success_pages + snapshot_pages
 
-        total_formatted = euro(total_value)
-        table_data = {"total_value": total_formatted, "table_rows": rows}
-        pages = render_screen(ui, "portfolio_result", table_data)
-        return [p for p in pages]
+    elif spec.name == "/buy":
+        symbol = (values.get("symbol") or "").upper()
+        qty_text = _format_quantity(values.get("qty"))
+        price_display = "market"
+        if values.get("price_eur") not in (None, ""):
+            price_display = _format_eur(values.get("price_eur"))
+        success_pages = render_screen(ui, "buy_success", {"symbol": symbol, "qty": qty_text, "price_ccy": price_display}) or []
+        snapshot_pages = _portfolio_pages_with_fallback(ui, resp.get("data", {}))
+        sessions.clear(chat_id)
+        return success_pages + snapshot_pages
+
+    elif spec.name == "/sell":
+        symbol = (values.get("symbol") or "").upper()
+        qty_text = _format_quantity(values.get("qty"))
+        price_display = "market"
+        if values.get("price_eur") not in (None, ""):
+            price_display = _format_eur(values.get("price_eur"))
+        success_pages = render_screen(ui, "sell_success", {"symbol": symbol, "qty": qty_text, "price_ccy": price_display}) or []
+        snapshot_pages = _portfolio_pages_with_fallback(ui, resp.get("data", {}))
+        sessions.clear(chat_id)
+        return success_pages + snapshot_pages
 
     elif spec.name == "/cash":
-        balance = resp.get("data", {}).get("cash_balance", 0)
-        balance_formatted = euro(balance) if balance else "€0.00"
-        pages = render_screen(ui, "cash_result", {"cash_balance": balance_formatted})
-        return [p for p in pages]
+        cash_dec = _to_decimal(resp.get("data", {}).get("cash_eur"))
+        if cash_dec == 0:
+            pages = render_screen(ui, "cash_zero", {})
+            return [p for p in pages] if pages else []
+        pages = render_screen(ui, "cash_result", {"cash_balance": _format_eur(cash_dec)})
+        return [p for p in pages] if pages else []
 
     elif spec.name == "/tx":
-        transactions = resp.get("data", {}).get("transactions", [])
-        count = len(transactions)
-        limit = values.get("n", 10)
-
+        payload = resp.get("data", {})
+        transactions = payload.get("transactions", []) or []
         if not transactions:
-            return ["You have no transactions yet. Start building your portfolio with `/add`, `/buy`, or `/cash_add`."]
-
-        # Format transaction table
-        rows = []
+            pages = render_screen(ui, "tx_empty", {})
+            return [p for p in pages] if pages else []
+        rows: List[List[str]] = [["DATE", "TYPE", "SYMBOL", "QTY", "AMOUNT"]]
         for tx in transactions:
-            time_str = tx.get('created_at', '')[:10] if tx.get('created_at') else 'N/A'
-            tx_type = tx.get('type', 'N/A').upper()
-            symbol = tx.get('symbol', 'CASH') if tx.get('symbol') else 'CASH'
-            qty = str(tx.get('qty', '')) if tx.get('qty') else ''
-            amount_eur = euro(tx.get('amount_eur', 0)) if tx.get('amount_eur') else ''
-            rows.append([time_str, tx_type, symbol, qty, amount_eur])
-
-        summary = f"You have {count} transaction{'s' if count != 1 else ''}:"
-        table_data = {"transaction_summary": summary, "table_rows": rows}
-        pages = render_screen(ui, "tx_result", table_data)
-        return [p for p in pages]
-
+            ts_raw = tx.get("ts")
+            timestamp = ts_raw.replace("T", " ")[:16] if isinstance(ts_raw, str) and ts_raw else ""
+            tx_type = str(tx.get("type") or "").upper()
+            symbol = str(tx.get("symbol") or "CASH")
+            qty = _format_quantity(tx.get("qty")) if tx.get("qty") is not None else ""
+            amount = _format_eur(tx.get("amount_eur")) if tx.get("amount_eur") is not None else ""
+            rows.append([timestamp, tx_type, symbol, qty, amount])
+        count = payload.get("count")
+        total = count if isinstance(count, int) else len(transactions)
+        summary = f"Showing {total} transaction{'s' if total != 1 else ''}"
+        pages = render_screen(ui, "tx_result", {"transaction_summary": summary, "table_rows": rows})
+        return [p for p in pages] if pages else []
     elif spec.name == "/allocation":
-        allocation_data = resp.get("data", {}).get("allocation", {})
-        current = allocation_data.get("current", {})
-        target = allocation_data.get("target", {})
+        allocation = resp.get("data", {}) or {}
+        pages = _allocation_table_pages(ui, ("Current", allocation.get("current")), ("Target", allocation.get("target")))
+        return pages
 
-        # Format allocation table
-        rows = [
-            ["Current", f"{current.get('stock', 0):.0f}%", f"{current.get('etf', 0):.0f}%", f"{current.get('crypto', 0):.0f}%"],
-            ["Target", f"{target.get('stock', 0):.0f}%", f"{target.get('etf', 0):.0f}%", f"{target.get('crypto', 0):.0f}%"]
-        ]
+    elif spec.name == "/allocation_edit":
+        allocation = resp.get("data", {}) or {}
+        rows = _allocation_rows([
+            ("Previous", allocation.get("previous")),
+            ("Current", allocation.get("current")),
+            ("Target", allocation.get("target")),
+        ])
+        pages = render_screen(ui, "allocation_edit_success", {"table_rows": rows})
+        sessions.clear(chat_id)
+        return [p for p in pages] if pages else []
 
-        pages = render_screen(ui, "allocation_result", {"table_rows": rows})
-        return [p for p in pages]
-
+    elif spec.name == "/rename":
+        rename_payload = resp.get("data", {}).get("rename", {}) or {}
+        symbol = (rename_payload.get("symbol") or values.get("symbol") or "").upper()
+        nickname_raw = rename_payload.get("display_name") or values.get("display_name") or ""
+        nickname = nickname_raw.strip()
+        pages = render_screen(ui, "rename_success", {"symbol": symbol, "nickname": nickname})
+        sessions.clear(chat_id)
+        return [p for p in pages] if pages else []
     # For other read-only portfolio commands, display the service response as formatted JSON (temporary)
     elif spec.name in ["/portfolio_snapshot", "/portfolio_summary",
                        "/portfolio_breakdown", "/portfolio_digest", "/portfolio_movers", "/po_if"]:
@@ -700,7 +993,5 @@ async def telegram_test(body: TestRouteIn):
         for chunk in paginate(r):
             await send_telegram_message(s.TELEGRAM_BOT_TOKEN, chat_id, chunk, s.REPLY_PARSE_MODE)
     return {"ok": True}
-
-
 
 

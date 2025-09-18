@@ -1,6 +1,9 @@
-# Telegram Router Service
+# Telegram Router Service ✅
 
-A FastAPI service that bridges Telegram to your internal microservices. It handles parsing, validation, short‑lived conversational sessions, idempotency, and formats human replies in MarkdownV2. External services return JSON only; this router renders user‑facing text.
+> **Status**: Phase 1 complete - All basic portfolio commands working
+> **See**: `PROJECT_STATUS_AND_ROADMAP.md` for complete project context
+
+FastAPI service that bridges Telegram to internal microservices (portfolio_core, market_data, fx). Handles parsing, validation, sessions, and MarkdownV2 formatting.
 
 ## Features
 - Webhook (Cloudflare) or long‑polling (dev)
@@ -82,7 +85,6 @@ curl -s "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" \
 
 ## Config files
 - `commands.json`: authoritative registry; no hardcoding
-- `router_copies.yaml`: generic + per‑command copies
 - `help_ranking.yaml`: sections + order; unknown commands fall back to alpha
 
 ## Endpoints

@@ -1,118 +1,64 @@
-"""Test configuration and fixtures."""
-import os
-import tempfile
-import pytest
+from __future__ import annotations
+
+try:
+    from respx.models import CallList
+except Exception:  # pragma: no cover - respx may be unavailable outside tests
+    CallList = None
+
+if CallList is not None:
+    def _reset(self):
+        self._calls.clear()
+        self._index = 0
+    CallList.reset = _reset
+
+
+
 import asyncio
-from unittest.mock import AsyncMock, patch
+from pathlib import Path
 
-# Set test environment variables before imports
-os.environ.setdefault("DB_PATH", "/tmp/test_portfolio.db")
+import pytest
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
 
-from app.db import init_db, open_db
-from app.models import UserContext
-from app.services.portfolio import PortfolioService
-from app.services.analytics import AnalyticsService
-
-
-# Removed custom event_loop fixture as it's deprecated in pytest-asyncio
-# Tests now use the default pytest-asyncio event loop
+from app.main import app
+from app.settings import settings
+from app import db
+from app.clients import market_data_client
 
 
-@pytest.fixture
-async def test_db():
-    """Create a temporary test database."""
-    # Create temporary file for test database
-    fd, path = tempfile.mkstemp(suffix='.db')
-    os.close(fd)
+@pytest.fixture(scope="session")
+def event_loop():
+    loop = asyncio.new_event_loop()
+    yield loop
+    loop.close()
 
+
+@pytest_asyncio.fixture(autouse=True)
+async def _test_db(tmp_path: Path):
+    db_path = tmp_path / "portfolio.db"
+    settings.DB_PATH = str(db_path)
+    await db.init_db(str(db_path))
+    settings.MARKET_DATA_BASE_URL = "http://market-data.test"
+    market_data_client._base_url = settings.MARKET_DATA_BASE_URL.rstrip("/")
+    market_data_client.clear_cache()
+    yield
+    await market_data_client.close()
+
+
+@pytest_asyncio.fixture
+async def async_client() -> AsyncClient:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        yield client
+
+
+@pytest_asyncio.fixture
+async def conn():
+    connection = await db.open_db(settings.DB_PATH)
     try:
-        # Initialize database with test path
-        await init_db(path)
-        yield path
+        yield connection
     finally:
-        # Clean up
-        if os.path.exists(path):
-            os.unlink(path)
+        await connection.close()
 
 
-@pytest.fixture
-async def db_connection(test_db):
-    """Database connection fixture."""
-    conn = await open_db(test_db)
-    try:
-        yield conn
-    finally:
-        await conn.close()
 
-
-@pytest.fixture
-def user_context():
-    """Test user context fixture."""
-    return UserContext(
-        user_id=12345,
-        first_name="Test",
-        last_name="User",
-        username="testuser",
-        language_code="en"
-    )
-
-
-@pytest.fixture
-async def portfolio_service(db_connection, user_context):
-    """Portfolio service fixture."""
-    # db_connection yields the actual connection
-    return PortfolioService(db_connection, user_context)
-
-
-@pytest.fixture
-async def analytics_service(db_connection, user_context):
-    """Analytics service fixture."""
-    # db_connection yields the actual connection
-    return AnalyticsService(db_connection, user_context)
-
-
-@pytest.fixture
-def mock_adapters():
-    """Mock external service adapters."""
-    with patch('app.adapters.fx_client') as mock_fx, \
-         patch('app.adapters.market_data_client') as mock_md:
-
-        # Setup default mock responses
-        mock_fx.health_check.return_value = True
-        mock_fx.cache = {}
-        mock_fx.get_rate.return_value = None
-        mock_fx.get_rates.return_value = {}
-
-        mock_md.health_check.return_value = True
-        mock_md.get_cache_stats.return_value = {
-            "quotes_cached": 0,
-            "meta_cached": 0,
-            "quotes_valid": 0,
-            "meta_valid": 0
-        }
-        mock_md.get_quote.return_value = None
-        mock_md.get_quotes.return_value = {}
-        mock_md.get_symbol_meta.return_value = None
-        mock_md.get_symbols_meta.return_value = {}
-        mock_md.clear_cache = AsyncMock()
-
-        yield {"fx": mock_fx, "market_data": mock_md}
-
-
-# Add aliases for backward compatibility
-@pytest.fixture
-async def db(db_connection):
-    """Alias for db_connection fixture."""
-    return db_connection
-
-
-@pytest.fixture
-def test_user(user_context):
-    """Alias for user_context fixture."""
-    return user_context
-
-
-@pytest.fixture
-def market_data_mock(mock_adapters):
-    """Market data mock fixture."""
-    return mock_adapters["market_data"]

@@ -1,218 +1,148 @@
-"""
-Core database models using SQLite with aiosqlite for async support.
-"""
-from typing import Optional, Dict, Any
+"""Database helpers for portfolio_core."""
+from __future__ import annotations
+
+import json
+import os
 from datetime import datetime
 from decimal import Decimal
-import json
-import sqlite3
+from typing import Any, Dict
+
 import aiosqlite
+import sqlite3
+
+from .settings import settings
 
 
-# Decimal adapters for SQLite
-def adapt_decimal(d):
-    """Convert Decimal to string for SQLite storage."""
-    return str(d)
+sqlite3.register_adapter(Decimal, lambda d: str(d))
 
 
-def convert_decimal(s):
-    """Convert string back to Decimal from SQLite."""
-    if isinstance(s, bytes):
-        s = s.decode('utf-8')
-    return Decimal(s)
+def _convert_decimal(value: bytes | str) -> Decimal:
+    if value is None:
+        return Decimal("0")
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    return Decimal(value)
 
 
-# Register adapters
-sqlite3.register_adapter(Decimal, adapt_decimal)
-sqlite3.register_converter("DECIMAL", convert_decimal)
-sqlite3.register_converter("NUMERIC", convert_decimal)
+sqlite3.register_converter("DECIMAL", _convert_decimal)
+sqlite3.register_converter("NUMERIC", _convert_decimal)
 
 
 SCHEMA = """
--- Users table (from Telegram)
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
-    first_name TEXT NOT NULL,
-    last_name TEXT NOT NULL DEFAULT '',
+    first_name TEXT,
+    last_name TEXT,
     username TEXT,
     language_code TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_seen_ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    last_seen_ts TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
--- Positions table (active holdings)
 CREATE TABLE IF NOT EXISTS positions (
     user_id INTEGER NOT NULL,
     symbol TEXT NOT NULL,
-    market TEXT NOT NULL,
     asset_class TEXT NOT NULL,
+    market TEXT NOT NULL,
     qty NUMERIC NOT NULL,
-    avg_cost_ccy NUMERIC NOT NULL,
     avg_cost_eur NUMERIC NOT NULL,
+    avg_cost_ccy NUMERIC NOT NULL,
     ccy TEXT NOT NULL,
-    nickname TEXT,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    display_name TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id, symbol),
-    FOREIGN KEY (user_id) REFERENCES users (user_id)
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
 
--- Cash balances (EUR only)
 CREATE TABLE IF NOT EXISTS cash_balances (
     user_id INTEGER PRIMARY KEY,
     amount_eur NUMERIC NOT NULL DEFAULT 0,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users (user_id)
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
 
--- Transactions log
 CREATE TABLE IF NOT EXISTS transactions (
     tx_id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
-    ts TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    op_id TEXT,
+    ts TEXT DEFAULT CURRENT_TIMESTAMP,
     type TEXT NOT NULL,
     symbol TEXT,
+    asset_class TEXT,
     qty NUMERIC,
-    price_ccy NUMERIC,
-    ccy TEXT,
-    amount_eur NUMERIC NOT NULL,
-    fx_rate_used NUMERIC,
+    price_eur NUMERIC,
+    amount_eur NUMERIC,
+    cash_delta_eur NUMERIC,
+    fees_eur NUMERIC DEFAULT 0,
     note TEXT,
-    FOREIGN KEY (user_id) REFERENCES users (user_id)
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
 
--- Portfolio snapshots
+CREATE INDEX IF NOT EXISTS idx_transactions_user_ts ON transactions(user_id, ts DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_op ON transactions(user_id, op_id) WHERE op_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS operations (
+    user_id INTEGER NOT NULL,
+    op_id TEXT NOT NULL,
+    command TEXT NOT NULL,
+    result_json TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, op_id)
+);
+
+CREATE TABLE IF NOT EXISTS allocations (
+    user_id INTEGER PRIMARY KEY,
+    stock_pct INTEGER NOT NULL,
+    etf_pct INTEGER NOT NULL,
+    crypto_pct INTEGER NOT NULL,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
+);
+
 CREATE TABLE IF NOT EXISTS snapshots (
     user_id INTEGER NOT NULL,
-    date DATE NOT NULL,
-    value_eur DECIMAL NOT NULL,
-    net_external_flows_eur DECIMAL NOT NULL,
-    daily_r_t DECIMAL,
+    date TEXT NOT NULL,
+    value_eur NUMERIC NOT NULL,
+    net_external_flows_eur NUMERIC NOT NULL DEFAULT 0,
+    daily_r_t NUMERIC,
     PRIMARY KEY (user_id, date),
-    FOREIGN KEY (user_id) REFERENCES users (user_id)
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
 
--- Target allocations
-CREATE TABLE IF NOT EXISTS targets (
-    user_id INTEGER PRIMARY KEY,
-    etf_target_pct INTEGER NOT NULL,
-    stock_target_pct INTEGER NOT NULL,
-    crypto_target_pct INTEGER NOT NULL,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users (user_id)
-);
-
--- Alerts
 CREATE TABLE IF NOT EXISTS alerts (
     alert_id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     kind TEXT NOT NULL,
     params_json TEXT NOT NULL,
-    enabled BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users (user_id)
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
-
--- Indexes for common queries
--- Indexes for common queries
-CREATE INDEX IF NOT EXISTS idx_transactions_user_ts ON transactions (user_id, ts DESC);
-CREATE INDEX IF NOT EXISTS idx_positions_user_class ON positions (user_id, asset_class);
-CREATE INDEX IF NOT EXISTS idx_alerts_user_kind ON alerts (user_id, kind);
-CREATE INDEX IF NOT EXISTS idx_transactions_user_type ON transactions (user_id, type);
-CREATE INDEX IF NOT EXISTS idx_snapshots_user_date ON snapshots (user_id, date DESC);
-CREATE INDEX IF NOT EXISTS idx_positions_user_qty ON positions (user_id) WHERE qty > 0;
-
--- Drop old tables that are no longer used
-DROP TABLE IF EXISTS portfolios;
-DROP TABLE IF EXISTS portfolio_positions;
-DROP TABLE IF EXISTS portfolio_transactions;
-
--- Migrate data if needed (this will run once during update)
--- Create temp table for positions migration
-CREATE TABLE IF NOT EXISTS positions_new (
-    user_id INTEGER NOT NULL,
-    symbol TEXT NOT NULL,
-    market TEXT NOT NULL,
-    asset_class TEXT NOT NULL,
-    qty NUMERIC NOT NULL,
-    avg_cost_ccy NUMERIC NOT NULL,
-    avg_cost_eur NUMERIC NOT NULL,
-    ccy TEXT NOT NULL,
-    nickname TEXT,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (user_id, symbol),
-    FOREIGN KEY (user_id) REFERENCES users (user_id)
-);
-
--- Migrate existing positions data if old table exists
-INSERT OR IGNORE INTO positions_new (user_id, symbol, market, asset_class, qty, avg_cost_ccy, avg_cost_eur, ccy, nickname, updated_at)
-SELECT user_id, symbol,
-       COALESCE(market, 'US') as market,
-       COALESCE(asset_class, 'stock') as asset_class,
-       qty, avg_cost_ccy, avg_cost_eur, ccy, nickname, updated_at
-FROM positions
-WHERE EXISTS (SELECT name FROM sqlite_master WHERE type='table' AND name='positions');
-
--- Drop old positions table and rename new one
-DROP TABLE IF EXISTS positions;
-ALTER TABLE positions_new RENAME TO positions;
-
--- Same for cash_balances
-CREATE TABLE IF NOT EXISTS cash_balances_new (
-    user_id INTEGER PRIMARY KEY,
-    amount_eur NUMERIC NOT NULL DEFAULT 0,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users (user_id)
-);
-
--- Migrate cash balances
-INSERT OR IGNORE INTO cash_balances_new (user_id, amount_eur, updated_at)
-SELECT user_id, amount_eur, updated_at
-FROM cash_balances
-WHERE EXISTS (SELECT name FROM sqlite_master WHERE type='table' AND name='cash_balances');
-
-DROP TABLE IF EXISTS cash_balances;
-ALTER TABLE cash_balances_new RENAME TO cash_balances;
 """
 
 
-async def init_db(db_path: Optional[str] = None) -> None:
-    """Initialize database schema."""
-    from .settings import settings
-    import os
-
+async def init_db(db_path: str | None = None) -> None:
     path = db_path or settings.DB_PATH
-
-    # Ensure directory exists
-    directory = os.path.dirname(path)
-    if directory and not os.path.exists(directory):
-        os.makedirs(directory, exist_ok=True)
-
-    async with aiosqlite.connect(path) as db:
-        await db.executescript(SCHEMA)
-        await db.commit()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    async with aiosqlite.connect(path) as conn:
+        await conn.executescript(SCHEMA)
+        await conn.commit()
 
 
-async def open_db(db_path: Optional[str] = None):
-    """Open database connection with Decimal support."""
-    from .settings import settings
-
+async def open_db(db_path: str | None = None) -> aiosqlite.Connection:
     path = db_path or settings.DB_PATH
-    # aiosqlite uses sqlite3 under the hood, so the adapters will be used
-    db = await aiosqlite.connect(path,
-                                detect_types=sqlite3.PARSE_DECLTYPES)
-    db.row_factory = aiosqlite.Row
-    return db
+    conn = await aiosqlite.connect(path, detect_types=sqlite3.PARSE_DECLTYPES)
+    conn.row_factory = aiosqlite.Row
+    return conn
 
 
-# User operations
-async def upsert_user(db: aiosqlite.Connection, user: Dict[str, Any]) -> None:
-    """Update or insert user record."""
+async def upsert_user(conn: aiosqlite.Connection, user: Dict[str, Any]) -> None:
     user_id = user.get("user_id")
     if not user_id:
         return
-
-    async with db.execute(
+    await conn.execute(
         """
         INSERT INTO users (user_id, first_name, last_name, username, language_code, updated_at, last_seen_ts)
         VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
@@ -231,5 +161,68 @@ async def upsert_user(db: aiosqlite.Connection, user: Dict[str, Any]) -> None:
             user.get("username"),
             user.get("language_code"),
         ),
-    ):
-        await db.commit()
+    )
+    await conn.commit()
+
+
+async def ensure_user_state(conn: aiosqlite.Connection, user_id: int, *, defaults: Dict[str, Any]) -> None:
+    await conn.execute(
+        """
+        INSERT INTO cash_balances (user_id, amount_eur, updated_at)
+        VALUES (?, 0, CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id) DO NOTHING
+        """,
+        (user_id,),
+    )
+    await conn.execute(
+        """
+        INSERT INTO allocations (user_id, stock_pct, etf_pct, crypto_pct, updated_at)
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id) DO NOTHING
+        """,
+        (
+            user_id,
+            defaults["stock_pct"],
+            defaults["etf_pct"],
+            defaults["crypto_pct"],
+        ),
+    )
+    await conn.commit()
+
+
+async def record_operation(
+    conn: aiosqlite.Connection,
+    *,
+    user_id: int,
+    op_id: str,
+    command: str,
+    result: Dict[str, Any],
+) -> None:
+    payload = json.dumps(result, default=_json_default)
+    await conn.execute(
+        """
+        INSERT OR REPLACE INTO operations (user_id, op_id, command, result_json, created_at)
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """,
+        (user_id, op_id, command, payload),
+    )
+    await conn.commit()
+
+
+async def get_operation(conn: aiosqlite.Connection, *, user_id: int, op_id: str) -> Dict[str, Any] | None:
+    async with conn.execute(
+        "SELECT result_json FROM operations WHERE user_id = ? AND op_id = ?",
+        (user_id, op_id),
+    ) as cursor:
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        return json.loads(row["result_json"])
+
+
+def _json_default(obj: Any) -> Any:
+    if isinstance(obj, Decimal):
+        return str(obj)
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    raise TypeError(f"Object of type {type(obj)!r} is not JSON serialisable")

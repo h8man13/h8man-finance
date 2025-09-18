@@ -5,239 +5,640 @@
       "aliases": [],
       "description": "Show help",
       "args_schema": [],
-      "dispatch": {"service": "router", "method": "LOCAL", "path": "/help"},
-      "help": {"usage": ""}
+      "dispatch": {
+        "service": "router",
+        "method": "LOCAL",
+        "path": "/help"
+      },
+      "help": {
+        "usage": ""
+      }
     },
     {
       "name": "/cancel",
       "aliases": [],
       "description": "Cancel current session",
       "args_schema": [],
-      "dispatch": {"service": "router", "method": "LOCAL", "path": "/cancel"},
-      "help": {"usage": ""}
+      "dispatch": {
+        "service": "router",
+        "method": "LOCAL",
+        "path": "/cancel"
+      },
+      "help": {
+        "usage": ""
+      }
     },
     {
       "name": "/price",
-      "aliases": ["/p"],
+      "aliases": [
+        "/p"
+      ],
       "description": "Latest quotes for 1..10 symbols",
       "args_schema": [
-        {"name": "symbols", "type": "string", "required": false, "many": true, "min_items": 1, "max_items": 10}
+        {
+          "name": "symbols",
+          "type": "string",
+          "required": false,
+          "many": true,
+          "min_items": 1,
+          "max_items": 10
+        }
       ],
-      "dispatch": {"service": "market_data", "method": "GET", "path": "/quote", "args_map": {"symbols": "symbols"}},
-      "help": {"usage": "[symbols...]", "example": "nvda aapl"}
+      "dispatch": {
+        "service": "market_data",
+        "method": "GET",
+        "path": "/quote",
+        "args_map": {
+          "symbols": "symbols"
+        }
+      },
+      "help": {
+        "usage": "[symbols...]",
+        "example": "nvda aapl"
+      }
     },
     {
       "name": "/fx",
       "aliases": [],
       "description": "Latest FX conversion rate",
       "args_schema": [
-        {"name": "base", "type": "string", "required": false},
-        {"name": "quote", "type": "string", "required": false}
+        {
+          "name": "base",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "quote",
+          "type": "string",
+          "required": false
+        }
       ],
-      "dispatch": {"service": "fx", "method": "GET", "path": "/fx", "args_map": {"base": "base", "quote": "quote"}},
-      "help": {"usage": "[base] [quote]", "example": "usd eur"}
+      "dispatch": {
+        "service": "fx",
+        "method": "GET",
+        "path": "/fx",
+        "args_map": {
+          "base": "base",
+          "quote": "quote"
+        }
+      },
+      "help": {
+        "usage": "[base] [quote]",
+        "example": "usd eur"
+      }
     },
     {
       "name": "/exit",
       "aliases": [],
       "description": "Exit current conversation",
       "args_schema": [],
-      "dispatch": {"service": "router", "method": "LOCAL", "path": "/exit"},
-      "help": {"usage": ""}
+      "dispatch": {
+        "service": "router",
+        "method": "LOCAL",
+        "path": "/exit"
+      },
+      "help": {
+        "usage": ""
+      }
     },
     {
       "name": "/portfolio",
-      "aliases": ["/po"],
+      "aliases": [
+        "/po"
+      ],
       "description": "Show portfolio snapshot",
       "args_schema": [],
-      "dispatch": {"service": "portfolio_core", "method": "GET", "path": "/portfolio"},
-      "help": {"usage": ""}
+      "dispatch": {
+        "service": "portfolio_core",
+        "method": "GET",
+        "path": "/portfolio"
+      },
+      "help": {
+        "usage": ""
+      }
     },
     {
       "name": "/add",
       "aliases": [],
       "description": "Add or increase a position",
       "args_schema": [
-        {"name": "qty", "type": "number", "required": false},
-        {"name": "symbol", "type": "string", "required": false},
-        {"name": "type", "type": "enum", "values": ["etf", "stock", "crypto"], "required": false}
+        {
+          "name": "qty",
+          "type": "number",
+          "required": false
+        },
+        {
+          "name": "symbol",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "asset_class",
+          "required": false,
+          "type": "enum",
+          "values": [
+            "etf",
+            "stock",
+            "crypto"
+          ]
+        }
       ],
-      "dispatch": {"service": "portfolio_core", "method": "POST", "path": "/add", "args_map": {"qty": "qty", "symbol": "symbol", "type": "type"}},
-      "help": {"usage": "[qty] [symbol] [type]", "example": "10 AAPL.US stock"}
+      "dispatch": {
+        "service": "portfolio_core",
+        "method": "POST",
+        "path": "/add",
+        "args_map": {
+          "asset_class": "asset_class",
+          "qty": "qty",
+          "symbol": "symbol"
+        }
+      },
+      "help": {
+        "usage": "[qty] [symbol] [asset_class]",
+        "example": "10 AAPL.US stock"
+      }
     },
     {
       "name": "/remove",
       "aliases": [],
       "description": "Remove a position fully",
       "args_schema": [
-        {"name": "symbol", "type": "string", "required": false}
+        {
+          "name": "symbol",
+          "type": "string",
+          "required": false
+        }
       ],
-      "dispatch": {"service": "portfolio_core", "method": "POST", "path": "/remove", "args_map": {"symbol": "symbol"}},
-      "help": {"usage": "[symbol]", "example": "AAPL.US"}
+      "dispatch": {
+        "service": "portfolio_core",
+        "method": "POST",
+        "path": "/remove",
+        "args_map": {
+          "symbol": "symbol"
+        }
+      },
+      "help": {
+        "usage": "[symbol]",
+        "example": "AAPL.US"
+      }
     },
     {
       "name": "/cash",
       "aliases": [],
       "description": "Show current cash balance in EUR",
       "args_schema": [],
-      "dispatch": {"service": "portfolio_core", "method": "GET", "path": "/cash"},
-      "help": {"usage": ""}
+      "dispatch": {
+        "service": "portfolio_core",
+        "method": "GET",
+        "path": "/cash"
+      },
+      "help": {
+        "usage": ""
+      }
     },
     {
       "name": "/cash_add",
       "aliases": [],
       "description": "Deposit or withdraw cash",
       "args_schema": [
-        {"name": "amount", "type": "number", "required": false}
+        {
+          "name": "amount_eur",
+          "type": "number",
+          "required": false
+        }
       ],
-      "dispatch": {"service": "portfolio_core", "method": "POST", "path": "/cash_add", "args_map": {"amount": "amount"}},
-      "help": {"usage": "[amount]", "example": "1000"}
+      "dispatch": {
+        "service": "portfolio_core",
+        "method": "POST",
+        "path": "/cash_add",
+        "args_map": {
+          "amount_eur": "amount_eur"
+        }
+      },
+      "help": {
+        "usage": "[amount]",
+        "example": "1000"
+      }
     },
     {
       "name": "/cash_remove",
       "aliases": [],
-      "description": "Remove cash from portfolio",
+      "description": "Remove cash balance",
       "args_schema": [
-        {"name": "amount", "type": "number", "required": false}
+        {
+          "name": "amount_eur",
+          "type": "number",
+          "required": false
+        }
       ],
-      "dispatch": {"service": "portfolio_core", "method": "POST", "path": "/cash_remove", "args_map": {"amount": "amount"}},
-      "help": {"usage": "[amount]", "example": "500"}
+      "dispatch": {
+        "service": "portfolio_core",
+        "method": "POST",
+        "path": "/cash_remove",
+        "args_map": {
+          "amount_eur": "amount_eur"
+        }
+      },
+      "help": {
+        "usage": "[amount]",
+        "example": "500"
+      }
     },
     {
       "name": "/buy",
-      "aliases": ["/b"],
+      "aliases": [
+        "/b"
+      ],
       "description": "Record a buy fill",
       "args_schema": [
-        {"name": "qty", "type": "number", "required": false},
-        {"name": "symbol", "type": "string", "required": false},
-        {"name": "price_ccy", "type": "number", "required": false}
+        {
+          "type": "number",
+          "required": false,
+          "name": "qty"
+        },
+        {
+          "type": "string",
+          "required": false,
+          "name": "symbol"
+        },
+        {
+          "type": "number",
+          "required": false,
+          "name": "price_eur"
+        },
+        {
+          "type": "number",
+          "required": false,
+          "name": "fees_eur"
+        }
       ],
       "dispatch": {
         "service": "portfolio_core",
         "method": "POST",
         "path": "/buy",
-        "args_map": {"qty": "qty", "symbol": "symbol", "price_ccy": "price_ccy"}
+        "args_map": {
+          "price_eur": "price_eur",
+          "fees_eur": "fees_eur",
+          "symbol": "symbol",
+          "qty": "qty"
+        }
       },
-      "help": {"usage": "[qty] [symbol] [price_ccy]", "example": "10 AAPL.US 150"}
+      "help": {
+        "usage": "[qty] [symbol] [price] [fees]",
+        "example": "10 AAPL.US 150"
+      }
     },
     {
       "name": "/sell",
-      "aliases": ["/s"],
+      "aliases": [
+        "/s"
+      ],
       "description": "Record a sell fill",
       "args_schema": [
-        {"name": "qty", "type": "number", "required": false},
-        {"name": "symbol", "type": "string", "required": false},
-        {"name": "price_ccy", "type": "number", "required": false}
+        {
+          "type": "number",
+          "required": false,
+          "name": "qty"
+        },
+        {
+          "type": "string",
+          "required": false,
+          "name": "symbol"
+        },
+        {
+          "type": "number",
+          "required": false,
+          "name": "price_eur"
+        },
+        {
+          "type": "number",
+          "required": false,
+          "name": "fees_eur"
+        }
       ],
       "dispatch": {
         "service": "portfolio_core",
         "method": "POST",
         "path": "/sell",
-        "args_map": {"qty": "qty", "symbol": "symbol", "price_ccy": "price_ccy"}
+        "args_map": {
+          "price_eur": "price_eur",
+          "fees_eur": "fees_eur",
+          "symbol": "symbol",
+          "qty": "qty"
+        }
       },
-      "help": {"usage": "[qty] [symbol] [price_ccy]", "example": "5 AAPL.US 155"}
+      "help": {
+        "usage": "[qty] [symbol] [price] [fees]",
+        "example": "5 AAPL.US 155"
+      }
     },
     {
       "name": "/tx",
       "aliases": [],
       "description": "List last N transactions",
       "args_schema": [
-        {"name": "n", "type": "integer", "required": false, "min": 1, "max": 50, "default": 10}
+        {
+          "name": "n",
+          "type": "integer",
+          "required": false,
+          "min": 1,
+          "max": 50,
+          "default": 10
+        }
       ],
-      "dispatch": {"service": "portfolio_core", "method": "GET", "path": "/tx", "args_map": {"n": "limit"}},
-      "help": {"usage": "[n]", "example": "10"}
+      "dispatch": {
+        "service": "portfolio_core",
+        "method": "GET",
+        "path": "/tx",
+        "args_map": {
+          "n": "limit"
+        }
+      },
+      "help": {
+        "usage": "[n]",
+        "example": "10"
+      }
     },
     {
       "name": "/portfolio_snapshot",
-      "aliases": ["/po_snapshot"],
+      "aliases": [
+        "/po_snapshot"
+      ],
       "description": "Portfolio snapshot per period",
       "args_schema": [
-        {"name": "period", "type": "enum", "values": ["d", "w", "m", "y"], "required": false, "default": "d"}
+        {
+          "name": "period",
+          "type": "enum",
+          "values": [
+            "d",
+            "w",
+            "m",
+            "y"
+          ],
+          "required": false,
+          "default": "d"
+        }
       ],
-      "dispatch": {"service": "portfolio_core", "method": "GET", "path": "/portfolio_snapshot", "args_map": {"period": "period"}},
-      "help": {"usage": "[period=d|w|m|y]", "example": "d"}
+      "dispatch": {
+        "service": "portfolio_core",
+        "method": "GET",
+        "path": "/portfolio_snapshot",
+        "args_map": {
+          "period": "period"
+        }
+      },
+      "help": {
+        "usage": "[period=d|w|m|y]",
+        "example": "d"
+      }
     },
     {
       "name": "/portfolio_summary",
-      "aliases": ["/po_summary"],
+      "aliases": [
+        "/po_summary"
+      ],
       "description": "Portfolio summary with benchmarks",
       "args_schema": [
-        {"name": "period", "type": "enum", "values": ["d", "w", "m", "y"], "required": false, "default": "m"}
+        {
+          "name": "period",
+          "type": "enum",
+          "values": [
+            "d",
+            "w",
+            "m",
+            "y"
+          ],
+          "required": false,
+          "default": "m"
+        }
       ],
-      "dispatch": {"service": "portfolio_core", "method": "GET", "path": "/portfolio_summary", "args_map": {"period": "period"}},
-      "help": {"usage": "[period=d|w|m|y]", "example": "m"}
+      "dispatch": {
+        "service": "portfolio_core",
+        "method": "GET",
+        "path": "/portfolio_summary",
+        "args_map": {
+          "period": "period"
+        }
+      },
+      "help": {
+        "usage": "[period=d|w|m|y]",
+        "example": "m"
+      }
     },
     {
       "name": "/portfolio_breakdown",
-      "aliases": ["/po_breakdown"],
+      "aliases": [
+        "/po_breakdown"
+      ],
       "description": "Holding-level performance by percent",
       "args_schema": [
-        {"name": "period", "type": "enum", "values": ["d", "w", "m", "y"], "required": false, "default": "y"}
+        {
+          "name": "period",
+          "type": "enum",
+          "values": [
+            "d",
+            "w",
+            "m",
+            "y"
+          ],
+          "required": false,
+          "default": "y"
+        }
       ],
-      "dispatch": {"service": "portfolio_core", "method": "GET", "path": "/portfolio_breakdown", "args_map": {"period": "period"}},
-      "help": {"usage": "[period=d|w|m|y]", "example": "y"}
+      "dispatch": {
+        "service": "portfolio_core",
+        "method": "GET",
+        "path": "/portfolio_breakdown",
+        "args_map": {
+          "period": "period"
+        }
+      },
+      "help": {
+        "usage": "[period=d|w|m|y]",
+        "example": "y"
+      }
     },
     {
       "name": "/portfolio_digest",
-      "aliases": ["/po_digest"],
+      "aliases": [
+        "/po_digest"
+      ],
       "description": "Compact digest with movers",
       "args_schema": [
-        {"name": "period", "type": "enum", "values": ["d", "w", "m", "y"], "required": false, "default": "m"}
+        {
+          "name": "period",
+          "type": "enum",
+          "values": [
+            "d",
+            "w",
+            "m",
+            "y"
+          ],
+          "required": false,
+          "default": "m"
+        }
       ],
-      "dispatch": {"service": "portfolio_core", "method": "GET", "path": "/portfolio_digest", "args_map": {"period": "period"}},
-      "help": {"usage": "[period=d|w|m|y]", "example": "m"}
+      "dispatch": {
+        "service": "portfolio_core",
+        "method": "GET",
+        "path": "/portfolio_digest",
+        "args_map": {
+          "period": "period"
+        }
+      },
+      "help": {
+        "usage": "[period=d|w|m|y]",
+        "example": "m"
+      }
     },
     {
       "name": "/allocation",
       "aliases": [],
       "description": "Current vs target allocations",
       "args_schema": [],
-      "dispatch": {"service": "portfolio_core", "method": "GET", "path": "/allocation"},
-      "help": {"usage": ""}
+      "dispatch": {
+        "service": "portfolio_core",
+        "method": "GET",
+        "path": "/allocation"
+      },
+      "help": {
+        "usage": ""
+      }
     },
     {
       "name": "/allocation_edit",
       "aliases": [],
       "description": "Edit target allocations",
       "args_schema": [
-        {"name": "etf_pct", "type": "integer", "required": false, "min": 0, "max": 100},
-        {"name": "stock_pct", "type": "integer", "required": false, "min": 0, "max": 100},
-        {"name": "crypto_pct", "type": "integer", "required": false, "min": 0, "max": 100}
+        {
+          "name": "stock_pct",
+          "max": 100,
+          "min": 0,
+          "type": "integer",
+          "required": false
+        },
+        {
+          "name": "etf_pct",
+          "max": 100,
+          "min": 0,
+          "type": "integer",
+          "required": false
+        },
+        {
+          "name": "crypto_pct",
+          "max": 100,
+          "min": 0,
+          "type": "integer",
+          "required": false
+        }
       ],
-      "dispatch": {"service": "portfolio_core", "method": "POST", "path": "/allocation_edit", "args_map": {"etf_pct": "etf_pct", "stock_pct": "stock_pct", "crypto_pct": "crypto_pct"}},
-      "help": {"usage": "[etf_pct] [stock_pct] [crypto_pct]", "example": "60 30 10"}
+      "dispatch": {
+        "service": "portfolio_core",
+        "method": "POST",
+        "path": "/allocation_edit",
+        "args_map": {
+          "stock_pct": "stock_pct",
+          "etf_pct": "etf_pct",
+          "crypto_pct": "crypto_pct"
+        }
+      },
+      "help": {
+        "usage": "[stock_pct] [etf_pct] [crypto_pct]",
+        "example": "30 60 10"
+      }
     },
     {
       "name": "/portfolio_movers",
-      "aliases": ["/po_movers"],
+      "aliases": [
+        "/po_movers"
+      ],
       "description": "Best/worst movers for a period",
       "args_schema": [
-        {"name": "period", "type": "enum", "values": ["d", "w", "m", "y"], "required": false, "default": "d"}
+        {
+          "name": "period",
+          "type": "enum",
+          "values": [
+            "d",
+            "w",
+            "m",
+            "y"
+          ],
+          "required": false,
+          "default": "d"
+        }
       ],
-      "dispatch": {"service": "portfolio_core", "method": "GET", "path": "/portfolio_movers", "args_map": {"period": "period"}},
-      "help": {"usage": "[period=d|w|m|y]", "example": "d"}
+      "dispatch": {
+        "service": "portfolio_core",
+        "method": "GET",
+        "path": "/portfolio_movers",
+        "args_map": {
+          "period": "period"
+        }
+      },
+      "help": {
+        "usage": "[period=d|w|m|y]",
+        "example": "d"
+      }
     },
     {
       "name": "/po_if",
       "aliases": [],
       "description": "What-if move for scope",
       "args_schema": [
-        {"name": "scope", "type": "string", "required": false},
-        {"name": "delta_pct", "type": "percent", "required": false}
+        {
+          "name": "scope",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "delta_pct",
+          "type": "percent",
+          "required": false
+        }
       ],
-      "dispatch": {"service": "portfolio_core", "method": "GET", "path": "/po_if", "args_map": {"scope": "scope", "delta_pct": "delta_pct"}},
-      "help": {"usage": "[symbol|pick=stocks|etf|crypto] [+x%|-x%]", "example": "AAPL.US +5%"}
+      "dispatch": {
+        "service": "portfolio_core",
+        "method": "GET",
+        "path": "/po_if",
+        "args_map": {
+          "scope": "scope",
+          "delta_pct": "delta_pct"
+        }
+      },
+      "help": {
+        "usage": "[symbol|pick=stocks|etf|crypto] [+x%|-x%]",
+        "example": "AAPL.US +5%"
+      }
     },
     {
       "name": "/rename",
       "aliases": [],
       "description": "Assign or update nickname",
       "args_schema": [
-        {"name": "symbol", "type": "string", "required": false},
-        {"name": "nickname", "type": "string", "required": false}
+        {
+          "name": "symbol",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "display_name",
+          "type": "string",
+          "required": false
+        }
       ],
-      "dispatch": {"service": "portfolio_core", "method": "POST", "path": "/rename", "args_map": {"symbol": "symbol", "nickname": "nickname"}},
-      "help": {"usage": "[symbol] [nickname]", "example": "AAPL.US 'Apple Inc'"}
+      "dispatch": {
+        "service": "portfolio_core",
+        "method": "POST",
+        "path": "/rename",
+        "args_map": {
+          "symbol": "symbol",
+          "display_name": "display_name"
+        }
+      },
+      "help": {
+        "usage": "[symbol] [nickname]",
+        "example": "AAPL.US 'Apple Inc'"
+      }
     }
   ]
 }

@@ -1,136 +1,180 @@
-"""
-Models for data validation and serialization.
-"""
-from typing import Optional, Dict, Any, List
+"""Pydantic models for portfolio_core."""
+from __future__ import annotations
+
 from datetime import datetime
 from decimal import Decimal
-from pydantic import BaseModel, Field
+from enum import Enum
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 
-class Portfolio(BaseModel):
-    id: Optional[int] = None
-    user_id: int
-    name: str
-    description: str
-    base_currency: str
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-
-
-class Position(BaseModel):
-    id: Optional[int] = None
-    portfolio_id: int
-    symbol: str
-    quantity: Decimal
-    avg_price: Decimal
-    currency: str
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-
-
-class Transaction(BaseModel):
-    id: Optional[int] = None
-    position_id: int
-    quantity: Decimal
-    price: Decimal
-    date: datetime
-    created_at: Optional[datetime] = None
-
-
-class PortfolioSnapshot(BaseModel):
-    id: Optional[int] = None
-    portfolio_id: int
-    date: datetime
-    total_value: Decimal
-    cash_value: Decimal
-    invested_value: Decimal
-    created_at: Optional[datetime] = None
-
-
-class PositionPerformance(BaseModel):
-    position_id: int
-    symbol: str
-    cost_basis: Decimal
-    market_value: Decimal
-    unrealized_gain: Decimal
-    total_return_pct: Decimal
-    calculated_at: datetime
+class ErrorCode(str, Enum):
+    BAD_INPUT = "BAD_INPUT"
+    NOT_FOUND = "NOT_FOUND"
+    INSUFFICIENT = "INSUFFICIENT"
+    CONFLICT = "CONFLICT"
+    INTERNAL = "INTERNAL"
 
 
 class ErrorBody(BaseModel):
-    code: str
+    code: ErrorCode
     message: str
-    source: str
+    source: str = "portfolio_core"
     retriable: bool = False
     details: Optional[Dict[str, Any]] = None
 
 
 class OkEnvelope(BaseModel):
+    model_config = ConfigDict(json_encoders={Decimal: lambda d: str(d)})
+
     ok: bool = True
     data: Dict[str, Any]
-    ts: datetime
+    ts: datetime = Field(default_factory=datetime.utcnow)
     partial: Optional[bool] = None
-    error: Optional[ErrorBody] = None
 
 
 class ErrEnvelope(BaseModel):
+    model_config = ConfigDict(json_encoders={Decimal: lambda d: str(d)})
+
     ok: bool = False
     error: ErrorBody
-    ts: datetime
+    ts: datetime = Field(default_factory=datetime.utcnow)
 
 
 class UserContext(BaseModel):
-    user_id: Optional[int] = None
+    user_id: int
     first_name: Optional[str] = None
-    last_name: Optional[str] = Field(default="")
+    last_name: Optional[str] = ""
     username: Optional[str] = None
     language_code: Optional[str] = None
 
 
-class Position(BaseModel):
-    user_id: int
+class HoldingSnapshot(BaseModel):
+    model_config = ConfigDict(json_encoders={Decimal: lambda d: str(d)})
+
     symbol: str
-    market: str
+    display_name: Optional[str] = None
     asset_class: str
-    qty: Decimal
-    avg_cost_ccy: Decimal
-    avg_cost_eur: Decimal
-    ccy: str
-    nickname: Optional[str] = None
-    updated_at: datetime
+    market: str
+    qty_total: Decimal
+    price_eur: Decimal
+    value_eur: Decimal
+    currency: str
+    freshness: Optional[str] = None
+
+
+class PortfolioSnapshot(BaseModel):
+    model_config = ConfigDict(json_encoders={Decimal: lambda d: str(d)})
+
+    total_value_eur: Decimal
+    cash_eur: Decimal
+    holdings: List[HoldingSnapshot]
 
 
 class CashBalance(BaseModel):
-    user_id: int
-    amount_eur: Decimal
-    updated_at: datetime
+    model_config = ConfigDict(json_encoders={Decimal: lambda d: str(d)})
+
+    cash_eur: Decimal
 
 
-class Transaction(BaseModel):
-    tx_id: Optional[int] = None
-    user_id: int
+class TransactionRecord(BaseModel):
+    model_config = ConfigDict(json_encoders={Decimal: lambda d: str(d)})
+
+    tx_id: int
     ts: datetime
     type: str
     symbol: Optional[str] = None
+    asset_class: Optional[str] = None
     qty: Optional[Decimal] = None
-    price_ccy: Optional[Decimal] = None
-    ccy: Optional[str] = None
+    price_eur: Optional[Decimal] = None
+    amount_eur: Optional[Decimal] = None
+    cash_delta_eur: Optional[Decimal] = None
+    fees_eur: Optional[Decimal] = None
+
+
+class AllocationSnapshot(BaseModel):
+    stock_pct: int
+    etf_pct: int
+    crypto_pct: int
+
+
+class AllocationDiff(BaseModel):
+    before: AllocationSnapshot
+    after: AllocationSnapshot
+
+
+class AddPositionRequest(BaseModel):
+    op_id: str
+    symbol: str
+    qty: Decimal
+    asset_class: Optional[str] = None
+
+    @field_validator("qty")
+    @classmethod
+    def check_positive_qty(cls, value: Decimal) -> Decimal:
+        if value <= 0:
+            raise ValueError("qty must be greater than 0")
+        return value
+
+
+class RemovePositionRequest(BaseModel):
+    op_id: str
+    symbol: str
+
+
+class CashMutationRequest(BaseModel):
+    op_id: str
     amount_eur: Decimal
-    fx_rate_used: Optional[Decimal] = None
-    note: Optional[str] = None
+
+    @field_validator("amount_eur")
+    @classmethod
+    def check_positive_amount(cls, value: Decimal) -> Decimal:
+        if value <= 0:
+            raise ValueError("amount must be greater than 0")
+        return value
 
 
-class Snapshot(BaseModel):
-    user_id: int
-    date: datetime
-    value_eur: Decimal
-    net_external_flows_eur: Decimal
-    daily_r_t: Optional[Decimal] = None
+class TradeRequest(BaseModel):
+    op_id: str
+    symbol: str
+    qty: Decimal
+    price_eur: Optional[Decimal] = None
+    fees_eur: Optional[Decimal] = None
+
+    @field_validator("qty")
+    @classmethod
+    def check_trade_qty(cls, value: Decimal) -> Decimal:
+        if value <= 0:
+            raise ValueError("qty must be greater than 0")
+        return value
+
+    @field_validator("fees_eur")
+    @classmethod
+    def check_fees(cls, value: Optional[Decimal]) -> Optional[Decimal]:
+        if value is not None and value < 0:
+            raise ValueError("fees must be greater than or equal to 0")
+        return value
+
+class AllocationEditRequest(BaseModel):
+    op_id: str
+    stock_pct: int
+    etf_pct: int
+    crypto_pct: int
+
+    @field_validator("stock_pct", "etf_pct", "crypto_pct")
+    @classmethod
+    def clamp_pct(cls, value: int) -> int:
+        if value < 0 or value > 100:
+            raise ValueError("percentages must be between 0 and 100")
+        return value
 
 
-class TargetAllocation(BaseModel):
-    user_id: int
-    etf_target_pct: int
-    stock_target_pct: int
-    crypto_target_pct: int
-    updated_at: datetime
+class RenameRequest(BaseModel):
+    op_id: str
+    symbol: str
+    display_name: str
+
+
+class TxQuery(BaseModel):
+    limit: int = Field(default=10, ge=1, le=50)

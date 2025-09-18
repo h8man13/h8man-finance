@@ -22,10 +22,6 @@ class Dispatcher:
         args_map: Dict[str, str] = spec.get("args_map", {})
         payload: Dict[str, Any] = {to: args.get(frm) for frm, to in args_map.items()}
 
-        # Add user context for portfolio_core calls
-        if service == "portfolio_core" and user_context:
-            payload.update(user_context)
-
         # Market data
         if service == "market_data":
             if path == "/quote" and method == "GET":
@@ -43,32 +39,25 @@ class Dispatcher:
                 base = (payload.get("base") or "").strip()
                 quote = (payload.get("quote") or "").strip()
                 if not base or not quote:
-                    # Signal UI prompt for /fx
                     return {"ok": True, "data": {"fx_prompt": True}}
                 try:
                     data = await self.fx.get_fx(base=base, quote=quote, force=True)
-                    # Wrap raw FX payload in envelope for router flow
                     return {"ok": True, "data": data}
                 except Exception as e:
                     return {"ok": False, "error": {"code": "UPSTREAM_ERROR", "message": str(e), "source": "fx", "retriable": True}}
 
-        # Portfolio core
         if service == "portfolio_core":
-            if path == "/buy" and method == "POST":
-                return await self.portfolio.post_buy(payload)
-            if path == "/sell" and method == "POST":
-                return await self.portfolio.post_sell(payload)
-
-            # Generic passthrough using HTTP client (until dedicated methods are added)
             base = self.portfolio.base
             url = f"{base}{path}"
+            query_params = {k: v for k, v in (user_context or {}).items() if v is not None}
+            body = {k: v for k, v in payload.items() if v is not None}
             try:
                 if method == "GET":
-                    return (await self.http.request("GET", url, params=payload)).json()
+                    params = {**body, **query_params}
+                    return (await self.http.request("GET", url, params=params)).json()
                 if method == "POST":
-                    return (await self.http.request("POST", url, json=payload)).json()
+                    return (await self.http.request("POST", url, params=query_params, json=body)).json()
             except Exception as e:
                 return {"ok": False, "error": {"code": "UPSTREAM_ERROR", "message": str(e), "source": "portfolio_core", "retriable": True}}
 
-        # Unknown mapping
         return {"ok": False, "error": {"code": "unknown_dispatch", "message": f"No route for {service} {method} {path}"}}

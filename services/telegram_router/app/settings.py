@@ -27,7 +27,6 @@ class Settings(BaseSettings):
     IDEMPOTENCY_PATH: str = "/app/data/idempotency.json"
     SESSIONS_DIR: str = "/app/data/sessions"
     REGISTRY_PATH: str = "/config/commands.json"
-    COPIES_PATH: str = "/config/router_copies.yaml"
     RANKING_PATH: str = "/config/help_ranking.yaml"
     UI_PATH: str = "/config/ui.yml"
 

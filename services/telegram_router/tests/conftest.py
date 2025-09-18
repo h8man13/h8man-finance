@@ -20,10 +20,9 @@ def _env_setup(tmp_path_factory):
     os.environ.setdefault("TELEGRAM_WEBHOOK_SECRET", "whsec_test")
     os.environ.setdefault("ROUTER_OWNER_IDS", "42")
 
-    # Point registry/copies/ranking to this repo's config files
+    # Point registry/ranking to this repo's config files
     base = os.path.abspath(".")
     os.environ.setdefault("REGISTRY_PATH", os.path.join(base, "config", "commands.json"))
-    os.environ.setdefault("COPIES_PATH", os.path.join(base, "config", "router_copies.yaml"))
     os.environ.setdefault("RANKING_PATH", os.path.join(base, "config", "help_ranking.yaml"))
     os.environ.setdefault("UI_PATH", os.path.join(base, "config", "ui.yml"))
 

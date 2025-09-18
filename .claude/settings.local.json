@@ -25,7 +25,16 @@
       "Bash(python3:*)",
       "Bash(del:*)",
       "Bash(python -m pytest -q services/market_data)",
-      "Bash(timeout 120 docker-compose exec portfolio_core pytest -q tests/ --tb=no)"
+      "Bash(timeout 120 docker-compose exec portfolio_core pytest -q tests/ --tb=no)",
+      "Bash(C:/Users/hooma/AppData/Local/Microsoft/WindowsApps/python.exe -m pytest tests/ -v)",
+      "Read(//d/Dropbox/**)",
+      "Bash(timeout 120 docker-compose exec portfolio_core pytest tests/test_api.py -v --tb=short)",
+      "Bash(timeout 120 docker-compose exec portfolio_core pytest tests/test_api.py --collect-only)",
+      "Bash(timeout 120 docker-compose exec portfolio_core pytest tests/test_api.py::test_add_position_endpoint -v --tb=long)",
+      "Bash(timeout 120 docker-compose exec portfolio_core python -c \"import tests.test_api; print(''File loads correctly'')\")",
+      "Bash(timeout:*)",
+      "Bash(cat:*)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []

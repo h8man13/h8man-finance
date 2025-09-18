@@ -1,6 +1,0 @@
-Files to remove due to overlap with existing architecture:
-- app/core/parsers.py (overlaps with validator.py)
-- app/handlers/portfolio.py (bypasses ui.yml architecture)
-- app/handlers/__init__.py (not needed)
-- config/router_copies.yaml (duplicates ui.yml content)
-- config/router_config.yaml (should be in settings)
