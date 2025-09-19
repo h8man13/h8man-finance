@@ -150,7 +150,8 @@
         "args_map": {
           "asset_class": "asset_class",
           "qty": "qty",
-          "symbol": "symbol"
+          "symbol": "symbol",
+          "op_id": "op_id"
         }
       },
       "help": {
@@ -174,7 +175,8 @@
         "method": "POST",
         "path": "/remove",
         "args_map": {
-          "symbol": "symbol"
+          "symbol": "symbol",
+          "op_id": "op_id"
         }
       },
       "help": {
@@ -212,7 +214,8 @@
         "method": "POST",
         "path": "/cash_add",
         "args_map": {
-          "amount_eur": "amount_eur"
+          "amount_eur": "amount_eur",
+          "op_id": "op_id"
         }
       },
       "help": {
@@ -236,7 +239,8 @@
         "method": "POST",
         "path": "/cash_remove",
         "args_map": {
-          "amount_eur": "amount_eur"
+          "amount_eur": "amount_eur",
+          "op_id": "op_id"
         }
       },
       "help": {
@@ -280,7 +284,8 @@
           "price_eur": "price_eur",
           "fees_eur": "fees_eur",
           "symbol": "symbol",
-          "qty": "qty"
+          "qty": "qty",
+          "op_id": "op_id"
         }
       },
       "help": {
@@ -324,7 +329,8 @@
           "price_eur": "price_eur",
           "fees_eur": "fees_eur",
           "symbol": "symbol",
-          "qty": "qty"
+          "qty": "qty",
+          "op_id": "op_id"
         }
       },
       "help": {
@@ -539,7 +545,8 @@
         "args_map": {
           "stock_pct": "stock_pct",
           "etf_pct": "etf_pct",
-          "crypto_pct": "crypto_pct"
+          "crypto_pct": "crypto_pct",
+          "op_id": "op_id"
         }
       },
       "help": {
@@ -632,7 +639,8 @@
         "path": "/rename",
         "args_map": {
           "symbol": "symbol",
-          "display_name": "display_name"
+          "display_name": "display_name",
+          "op_id": "op_id"
         }
       },
       "help": {

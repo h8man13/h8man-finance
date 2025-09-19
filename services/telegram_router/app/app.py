@@ -413,8 +413,6 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
 
     if dispatch_override is None:
         values, missing, err = validate_args(spec.args_schema, tokens, got=got, cmd_name=spec.name)
-        print(f"[VALIDATION] cmd={spec.name}, args_schema={spec.args_schema}, tokens={tokens}, got={got}")
-        print(f"[VALIDATION] result: values={values}, missing={missing}, err={err}")
     else:
         tokens = []
     if err:
@@ -428,7 +426,7 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
             values["display_name"] = " ".join(tokens[1:]).strip()
 
     # Check if this command should prompt when no user arguments provided
-    should_prompt_when_empty = spec.args_schema and spec.name not in ["/tx", "/fx", "/portfolio_snapshot", "/portfolio_summary", "/portfolio_breakdown", "/portfolio_digest", "/portfolio_movers"]
+    should_prompt_when_empty = spec.args_schema and spec.name not in ["/help", "/cancel", "/exit", "/portfolio", "/cash", "/allocation", "/tx", "/fx", "/portfolio_snapshot", "/portfolio_summary", "/portfolio_breakdown", "/portfolio_digest", "/portfolio_movers"]
     user_provided_no_args = not tokens and not (existing and existing.get("got"))
 
 
