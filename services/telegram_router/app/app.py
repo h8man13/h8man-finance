@@ -931,8 +931,6 @@ async def _poll_updates():
             except Exception as e:
                 json_log(action="poll", status="error", error=str(e))
                 await asyncio.sleep(1.0)
-
-                    replies = await process_text(chat_id, sender_id, text, (s, registry, sessions, idemp, dispatcher, http), user_context)
 @app.get("/health")
 async def health():
     return {"ok": True, "ts": int(time.time())}
