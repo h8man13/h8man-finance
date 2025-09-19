@@ -188,12 +188,12 @@ def _portfolio_table_pages(ui: Dict[str, Any], portfolio: Dict[str, Any] | None)
         return [p for p in pages] if pages else []
 
     rows: List[List[str]] = [[
-        "Ticker",
-        "Asset class",
-        "Market",
-        "Quantity",
-        "Price EUR",
-        "Value EUR",
+        "TICKER",
+        "CLASS",
+        "MARKET",
+        "QTY",
+        "PRICE",
+        "TOTAL",
     ]]
 
     holdings_total = Decimal("0")
@@ -229,7 +229,7 @@ def _portfolio_pages_with_fallback(ui: Dict[str, Any], portfolio: Dict[str, Any]
 
 
 def _allocation_rows(entries: List[Tuple[str, Dict[str, Any]]]) -> List[List[str]]:
-    rows: List[List[str]] = [["", "stock", "etf", "crypto"]]
+    rows: List[List[str]] = [["", "STOCK", "ETF", "CRYPTO"]]
     for label, payload in entries:
         payload = payload or {}
         rows.append([
@@ -455,39 +455,46 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
     if spec.name == "/price" and existing and existing.get("cmd") == "/price" and existing.get("sticky"):
         clear_after = False
     dispatch_values = dispatch_override or values
-    if spec.dispatch.get("service") == "portfolio_core" and dispatch_override is None:
-        dispatch_values = _prepare_portfolio_payload(spec.name, dict(values))
-        method = spec.dispatch.get("method", "GET").upper()
-        if method == "POST":
-            op_id = dispatch_values.get("op_id")
-            if not op_id:
-                op_id = uuid.uuid4().hex
-                dispatch_values["op_id"] = op_id
-            values["op_id"] = op_id
-        if spec.name == "/cash_remove":
-            amount_dec = _to_decimal(dispatch_values.get("amount_eur"))
-            if amount_dec <= 0:
-                usage = spec.help.get("usage", "")
-                example = spec.help.get("example", "")
-                pages = render_screen(ui, "invalid_template", {"error": "amount must be greater than 0", "usage": usage, "example": example})
-                return [p for p in pages] if pages else []
-            ui_payload = {"amount_display": _format_eur(dispatch_values.get("amount_eur"))}
-            session_data = {
-                "chat_id": chat_id,
-                "cmd": spec.name,
-                "expected": [],
-                "got": values,
-                "missing_from": [],
-                "sticky": True,
-                "confirm": {
-                    "payload": dict(dispatch_values),
-                    "values": dict(values),
-                    "ui": ui_payload,
-                },
-            }
-            sessions.set(chat_id, session_data)
-            pages = render_screen(ui, "cash_remove_confirm", ui_payload)
+    if spec.dispatch.get("service") == "portfolio_core":
+        user_id = (user_context or {}).get("user_id")
+        if not user_id:
+            usage = spec.help.get("usage", "")
+            example = spec.help.get("example", "")
+            pages = render_screen(ui, "service_error", {"message": "User context unavailable. Please retry.", "usage": usage, "example": example})
             return [p for p in pages] if pages else []
+        if dispatch_override is None:
+            dispatch_values = _prepare_portfolio_payload(spec.name, dict(values))
+            method = spec.dispatch.get("method", "GET").upper()
+            if method == "POST":
+                op_id = dispatch_values.get("op_id")
+                if not op_id:
+                    op_id = uuid.uuid4().hex
+                    dispatch_values["op_id"] = op_id
+                values["op_id"] = op_id
+            if spec.name == "/cash_remove":
+                amount_dec = _to_decimal(dispatch_values.get("amount_eur"))
+                if amount_dec <= 0:
+                    usage = spec.help.get("usage", "")
+                    example = spec.help.get("example", "")
+                    pages = render_screen(ui, "invalid_template", {"error": "amount must be greater than 0", "usage": usage, "example": example})
+                    return [p for p in pages] if pages else []
+                ui_payload = {"amount_display": _format_eur(dispatch_values.get("amount_eur"))}
+                session_data = {
+                    "chat_id": chat_id,
+                    "cmd": spec.name,
+                    "expected": [],
+                    "got": values,
+                    "missing_from": [],
+                    "sticky": True,
+                    "confirm": {
+                        "payload": dict(dispatch_values),
+                        "values": dict(values),
+                        "ui": ui_payload,
+                    },
+                }
+                sessions.set(chat_id, session_data)
+                pages = render_screen(ui, "cash_remove_confirm", ui_payload)
+                return [p for p in pages] if pages else []
     resp = await dispatcher.dispatch(spec.dispatch, dispatch_values, user_context)
     if not isinstance(resp, dict) or not resp.get("ok", False):
         err = (resp or {}).get("error", {})
@@ -537,7 +544,7 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
             return [p for p in pages]
 
         # Build rows for table (compact for mobile); keep headers short and uppercase
-        rows: List[List[str]] = [["TICKER", "NOW", "OPEN", "%", "MARKET", "FRESHNESS"]]
+        rows: List[List[str]] = [["TICKER", "NOW", "OPEN", "%", "MARKET", "AGE"]]
 
         def _market_label(sym: str, market_code: str) -> str:
             sfx = ""
@@ -907,7 +914,16 @@ async def _poll_updates():
                     if idemp.seen(chat_id, update.update_id):
                         offset = update.update_id + 1
                         continue
-                    replies = await process_text(chat_id, sender_id, text, (s, registry, sessions, idemp, dispatcher, http))
+                    user_context = {}
+                    if msg.from_:
+                        user_context = {
+                            "user_id": msg.from_.id,
+                            "first_name": getattr(msg.from_, 'first_name', ''),
+                            "last_name": getattr(msg.from_, 'last_name', ''),
+                            "username": msg.from_.username,
+                            "language_code": getattr(msg.from_, 'language_code', 'en'),
+                        }
+                    replies = await process_text(chat_id, sender_id, text, (s, registry, sessions, idemp, dispatcher, http), user_context)
                     for rtxt in replies:
                         for chunk in paginate(rtxt):
                             await send_telegram_message(s.TELEGRAM_BOT_TOKEN, chat_id, chunk, s.REPLY_PARSE_MODE)
@@ -916,7 +932,7 @@ async def _poll_updates():
                 json_log(action="poll", status="error", error=str(e))
                 await asyncio.sleep(1.0)
 
-
+                    replies = await process_text(chat_id, sender_id, text, (s, registry, sessions, idemp, dispatcher, http), user_context)
 @app.get("/health")
 async def health():
     return {"ok": True, "ts": int(time.time())}
