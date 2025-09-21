@@ -6,12 +6,13 @@ import logging
 import os
 import uuid
 import time
-from typing import Any, Dict, List, Optional, Tuple
-from decimal import Decimal, InvalidOperation
+from typing import Any, Dict, List, Optional, Tuple, Callable, Awaitable
 
 import httpx
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request
 from contextlib import asynccontextmanager
+import inspect
+from functools import partial
 from fastapi.responses import JSONResponse
 
 from .settings import get_settings, Settings
@@ -23,7 +24,19 @@ from .core.sessions import SessionStore
 from .core.idempotency import IdempotencyStore
 from .core.dispatcher import Dispatcher
 from .core.templates import escape_mdv2, paginate, euro, monotable, safe_escape_mdv2_with_fences, convert_markdown_to_html, mdv2_blockquote, mdv2_expandable_blockquote
+from .handlers.market import MarketHandler
+from .handlers.portfolio import PortfolioHandler
+from .handlers.trading import TradingHandler
+from .handlers.system import SystemHandler
+from .services import (
+    FormattingService,
+    SessionService,
+    prepare_portfolio_payload,
+    portfolio_pages_with_fallback,
+    allocation_table_pages,
+)
 from .connectors.http import HTTPClient
+from .connectors.telegram import TelegramConnector
 from .ui.loader import load_ui, load_router_config, render_screen
 
 
@@ -40,12 +53,16 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
     # optional polling loop
+    telegram_connector = None
     poll_task = None
     if s.TELEGRAM_MODE == "polling" and s.TELEGRAM_BOT_TOKEN:
-        poll_task = asyncio.create_task(_poll_updates())
+        telegram_connector = TelegramConnector(s.TELEGRAM_BOT_TOKEN, _process_telegram_update)
+        poll_task = asyncio.create_task(telegram_connector.start_polling())
     try:
         yield
     finally:
+        if telegram_connector is not None:
+            telegram_connector.stop_polling()
         if poll_task is not None:
             poll_task.cancel()
             try:
@@ -55,6 +72,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Telegram Router", lifespan=lifespan)
+formatting_service = FormattingService()
 
 
 def setup_logging(level: str):
@@ -63,196 +81,6 @@ def setup_logging(level: str):
 
 def json_log(**kwargs):
     print(json.dumps(kwargs, ensure_ascii=False))
-
-def _decimal_str(value: Any) -> Optional[str]:
-    if value is None:
-        return None
-    try:
-        return str(Decimal(str(value)))
-    except Exception:
-        return None
-
-
-def _prepare_portfolio_payload(command: str, values: Dict[str, Any]) -> Dict[str, Any]:
-    prepared: Dict[str, Any] = {}
-    name = command.lower()
-    if name in ("/add", "/buy", "/sell"):
-        qty = _decimal_str(values.get("qty"))
-        if qty is not None:
-            prepared["qty"] = qty
-            values["qty"] = qty
-        symbol = values.get("symbol")
-        if symbol:
-            prepared["symbol"] = str(symbol).strip().upper()
-            values["symbol"] = prepared["symbol"]
-        if name == "/add":
-            asset_class = values.get("asset_class")
-            if asset_class:
-                prepared["asset_class"] = str(asset_class).lower()
-        if name in ("/buy", "/sell"):
-            price = values.get("price_eur")
-            price_str = _decimal_str(price)
-            if price_str is not None:
-                prepared["price_eur"] = price_str
-                values["price_eur"] = price_str
-            fees = values.get("fees_eur")
-            fees_str = _decimal_str(fees)
-            if fees_str is not None:
-                prepared["fees_eur"] = fees_str
-                values["fees_eur"] = fees_str
-        return prepared
-    if name in ("/remove", "/rename"):
-        symbol = values.get("symbol")
-        if symbol:
-            prepared["symbol"] = str(symbol).strip().upper()
-            values["symbol"] = prepared["symbol"]
-        if name == "/rename":
-            display_name = values.get("display_name")
-            if display_name:
-                prepared["display_name"] = str(display_name).strip()
-                values["display_name"] = prepared["display_name"]
-        return prepared
-    if name in ("/cash_add", "/cash_remove"):
-        amount = _decimal_str(values.get("amount_eur"))
-        if amount is not None:
-            prepared["amount_eur"] = amount
-            values["amount_eur"] = amount
-        return prepared
-    if name == "/allocation_edit":
-        for key in ("stock_pct", "etf_pct", "crypto_pct"):
-            if values.get(key) is not None:
-                prepared[key] = int(values[key])
-                values[key] = prepared[key]
-        return prepared
-    if name == "/tx":
-        if values.get("limit") is not None:
-            prepared["limit"] = int(values["limit"])
-            values["limit"] = prepared["limit"]
-        return prepared
-    if name == "/po_if":
-        scope = values.get("scope")
-        if scope:
-            prepared["scope"] = str(scope).strip()
-            values["scope"] = prepared["scope"]
-        delta = values.get("delta_pct")
-        delta_str = _decimal_str(delta)
-        if delta_str is not None:
-            prepared["delta_pct"] = delta_str
-            values["delta_pct"] = delta_str
-        return prepared
-    return {k: v for k, v in values.items() if v is not None}
-
-
-def _to_decimal(value: Any, default: Decimal | None = None) -> Decimal:
-    if default is None:
-        default = Decimal("0")
-    try:
-        if value is None:
-            return default
-        if isinstance(value, Decimal):
-            return value
-        return Decimal(str(value))
-    except (InvalidOperation, ValueError, TypeError):
-        return default
-
-def _format_quantity(value: Any) -> str:
-    dec = _to_decimal(value)
-    if dec == 0:
-        return "0"
-    s = format(dec.normalize(), "f")
-    if "." in s:
-        s = s.rstrip("0").rstrip(".")
-    return s or "0"
-
-def _format_percent(value: Any) -> str:
-    dec = _to_decimal(value)
-    try:
-        return f"{int(dec)}%"
-    except (ValueError, TypeError):
-        return f"{dec}%"
-
-def _format_eur(value: Any) -> str:
-    dec = _to_decimal(value)
-    return euro(float(dec))
-
-
-def _portfolio_table_pages(ui: Dict[str, Any], portfolio: Dict[str, Any] | None) -> List[str]:
-    if not ui or portfolio is None:
-        return []
-
-    holdings = portfolio.get("holdings") or []
-    cash_dec = _to_decimal(portfolio.get("cash_eur"))
-
-    if not holdings and cash_dec == 0:
-        pages = render_screen(ui, "portfolio_empty", {})
-        return [p for p in pages] if pages else []
-
-    rows: List[List[str]] = [[
-        "TICKER",
-        "CLASS",
-        "QTY",
-        "PRICE",
-        "TOTAL",
-    ]]
-
-    holdings_total = Decimal("0")
-    for holding in holdings:
-        symbol = str(holding.get("symbol") or "").upper()
-        # Remove .US suffix for cleaner visual display
-        display_symbol = symbol.replace(".US", "") if symbol.endswith(".US") else symbol
-        display_name = holding.get("display_name")
-        ticker = display_symbol if not display_name else f"{display_symbol} ({display_name})"
-        asset_class = (holding.get("asset_class") or "-").lower()
-        market = (holding.get("market") or "-").upper()
-        qty = _format_quantity(holding.get("qty_total"))
-        price = "-" if holding.get("price_eur") is None else _format_eur(holding.get("price_eur"))
-        value_dec = _to_decimal(holding.get("value_eur"))
-        value = _format_eur(value_dec)
-        holdings_total += value_dec
-        rows.append([ticker, asset_class, qty, price, value])
-
-    if cash_dec > 0:
-        cash_display = _format_eur(cash_dec)
-        rows.append(["Cash", "cash", "-", cash_display, cash_display])
-
-    total_dec = _to_decimal(portfolio.get("total_value_eur"), default=holdings_total + cash_dec)
-    data = {"total_value": _format_eur(total_dec), "table_rows": rows}
-    pages = render_screen(ui, "portfolio_result", data)
-    return [p for p in pages] if pages else []
-
-
-def _portfolio_pages_with_fallback(ui: Dict[str, Any], portfolio: Dict[str, Any] | None) -> List[str]:
-    pages = _portfolio_table_pages(ui, portfolio)
-    if pages:
-        return pages
-    fallback = render_screen(ui, "portfolio_empty", {})
-    return [p for p in fallback] if fallback else []
-
-
-def _allocation_rows(entries: List[Tuple[str, Dict[str, Any]]]) -> List[List[str]]:
-    rows: List[List[str]] = [["", "STOCK", "ETF", "CRYPTO"]]
-    for label, payload in entries:
-        payload = payload or {}
-        rows.append([
-            label,
-            _format_percent(payload.get("stock_pct")),
-            _format_percent(payload.get("etf_pct")),
-            _format_percent(payload.get("crypto_pct")),
-        ])
-    return rows
-
-
-def _allocation_table_pages(ui: Dict[str, Any], *entries: Tuple[str, Dict[str, Any]]) -> List[str]:
-    if not ui or not entries:
-        return []
-    rows = _allocation_rows(list(entries))
-    pages = render_screen(ui, "allocation_result", {"table_rows": rows})
-    return [p for p in pages] if pages else []
-
-# UI (ui.yml) is the single source of truth for rendering.
-
-
-# startup handled by lifespan
 
 
 def deps() -> Tuple[Settings, Registry, SessionStore, IdempotencyStore, Dispatcher, HTTPClient]:
@@ -331,26 +159,237 @@ async def send_telegram_message(token: str, chat_id: int, text: str, parse_mode:
             json_log(action="send_telegram", status="exception", error=str(e), chat_id=chat_id)
 
 
+async def _process_telegram_update(update: TelegramUpdate):
+    """Process a single Telegram update."""
+    s, registry, sessions, idemp, dispatcher, http = deps()
+
+    msg = update.get_message()
+    if not msg:
+        return
+
+    chat_id = msg.chat.id
+    sender_id = (msg.from_.id if msg.from_ else 0) or 0
+    text = msg.text or msg.caption or ""
+
+    if idemp.seen(chat_id, update.update_id):
+        return
+
+    user_context = {}
+    if msg.from_:
+        user_context = {
+            "user_id": msg.from_.id,
+            "first_name": getattr(msg.from_, 'first_name', ''),
+            "last_name": getattr(msg.from_, 'last_name', ''),
+            "username": msg.from_.username,
+            "language_code": getattr(msg.from_, 'language_code', 'en'),
+        }
+
+    replies = await process_text(chat_id, sender_id, text, (s, registry, sessions, idemp, dispatcher, http), user_context)
+    for rtxt in replies:
+        for chunk in paginate(rtxt):
+            await send_telegram_message(s.TELEGRAM_BOT_TOKEN, chat_id, chunk, s.REPLY_PARSE_MODE)
+
+
 # Legacy help builder removed; /help is rendered via UI screens.
 
 
-def get_sticky_commands() -> List[str]:
-    """Get sticky commands from router config, fallback to empty list."""
-    try:
-        config = load_router_config(get_settings().ROUTER_CONFIG_PATH)
-        if config:
-            session_config = config.get("session", {})
-            return session_config.get("sticky_commands", [])
-    except Exception:
-        pass
-    return []
 
+
+
+
+
+
+
+HandlerFunction = Callable[[], Awaitable | list[str]]
+
+def build_success_handlers(
+    market_handler,
+    portfolio_handler,
+    trading_handler,
+    ui,
+    resp,
+    chat_id,
+    spec,
+    values,
+    clear_after,
+) -> tuple[dict[str, HandlerFunction], set[str]]:
+    handlers: dict[str, HandlerFunction] = {
+        "/price": lambda: market_handler.handle_price(
+            chat_id=chat_id,
+            spec=spec,
+            values=values,
+            resp=resp,
+            clear_after=clear_after,
+        ),
+        "/fx": lambda: market_handler.handle_fx(
+            chat_id=chat_id,
+            spec=spec,
+            values=values,
+            resp=resp,
+        ),
+        "/portfolio": lambda: portfolio_handler.handle_portfolio(resp=resp),
+        "/add": lambda: portfolio_handler.handle_add(
+            chat_id=chat_id,
+            values=values,
+            resp=resp,
+        ),
+        "/remove": lambda: portfolio_handler.handle_remove(
+            chat_id=chat_id,
+            values=values,
+            resp=resp,
+        ),
+        "/buy": lambda: trading_handler.handle_buy(
+            chat_id=chat_id,
+            values=values,
+        ),
+        "/sell": lambda: trading_handler.handle_sell(
+            chat_id=chat_id,
+            values=values,
+        ),
+        "/cash_add": lambda: portfolio_handler.handle_cash_add(
+            chat_id=chat_id,
+            values=values,
+        ),
+        "/cash_remove": lambda: portfolio_handler.handle_cash_remove(
+            chat_id=chat_id,
+            values=values,
+            resp=resp,
+        ),
+        "/cash": lambda: portfolio_handler.handle_cash_overview(resp=resp),
+        "/tx": lambda: portfolio_handler.handle_transactions(resp=resp),
+        "/allocation": lambda: portfolio_handler.handle_allocation_view(resp=resp),
+        "/allocation_edit": lambda: portfolio_handler.handle_allocation_edit(
+            chat_id=chat_id,
+            values=values,
+            resp=resp,
+        ),
+        "/rename": lambda: portfolio_handler.handle_rename(
+            chat_id=chat_id,
+            values=values,
+            resp=resp,
+        ),
+    }
+
+    analytic_commands = {
+        "/portfolio_snapshot",
+        "/portfolio_summary",
+        "/portfolio_breakdown",
+        "/portfolio_digest",
+        "/portfolio_movers",
+        "/po_if",
+    }
+
+    for command in analytic_commands:
+        handlers.setdefault(command, lambda cmd=command: analytic_json_pages(ui, resp))
+
+    return handlers, analytic_commands
+
+
+
+def build_handlers(
+    ui,
+    session_service,
+    dispatcher,
+    settings,
+    formatting_service,
+    sticky_commands,
+):
+    market_handler = MarketHandler(
+        ui,
+        session_service,
+        dispatcher,
+        settings,
+        sticky_commands=sticky_commands,
+        formatting_service=formatting_service,
+    )
+
+    portfolio_snapshot_builder = partial(
+        portfolio_pages_with_fallback,
+        formatter=formatting_service,
+    )
+    allocation_builder = partial(
+        allocation_table_pages,
+        formatter=formatting_service,
+    )
+    portfolio_handler = PortfolioHandler(
+        ui,
+        session_service,
+        dispatcher,
+        settings,
+        sticky_commands=sticky_commands,
+        snapshot_builder=portfolio_snapshot_builder,
+        allocation_builder=allocation_builder,
+        formatting_service=formatting_service,
+    )
+
+    trading_handler = TradingHandler(
+        ui,
+        session_service,
+        dispatcher,
+        settings,
+        sticky_commands=sticky_commands,
+        formatting_service=formatting_service,
+    )
+
+    system_handler = SystemHandler(
+        ui,
+        session_service,
+        dispatcher,
+        settings,
+        sticky_commands=sticky_commands,
+    )
+
+    return market_handler, portfolio_handler, trading_handler, system_handler
 
 async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_context: Dict[str, Any] = None):
     s, registry, sessions, idemp, dispatcher, http = ctx
     ui = load_ui(get_settings().UI_PATH)
     if not ui:
         raise HTTPException(status_code=500, detail="UI config missing")
+
+    session_service = SessionService(sessions, s)
+    sticky_commands = session_service.get_sticky_commands()
+    market_handler = MarketHandler(
+        ui,
+        session_service,
+        dispatcher,
+        s,
+        sticky_commands=sticky_commands,
+        formatting_service=formatting_service,
+    )
+    portfolio_snapshot_builder = partial(portfolio_pages_with_fallback, formatter=formatting_service)
+    allocation_builder = partial(allocation_table_pages, formatter=formatting_service)
+    portfolio_handler = PortfolioHandler(
+        ui,
+        session_service,
+        dispatcher,
+        s,
+        sticky_commands=sticky_commands,
+        snapshot_builder=portfolio_snapshot_builder,
+        allocation_builder=allocation_builder,
+        formatting_service=formatting_service,
+    )
+    trading_handler = TradingHandler(
+        ui,
+        session_service,
+        dispatcher,
+        s,
+        sticky_commands=sticky_commands,
+        formatting_service=formatting_service,
+    )
+    system_handler = SystemHandler(
+        ui,
+        session_service,
+        dispatcher,
+        s,
+        sticky_commands=sticky_commands,
+    )
+    if user_context is None:
+        user_context = {}
+    elif not isinstance(user_context, dict):
+        user_context = dict(user_context)
+    if sender_id and not user_context.get("user_id"):
+        user_context["user_id"] = sender_id
     # owner gate (only if configured)
     if s.owner_ids and sender_id not in s.owner_ids:
         pages = render_screen(ui, "not_authorized", {})
@@ -360,7 +399,7 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
     cmd, tokens = parse_text(text)
     if cmd is None:
         # If ongoing session, treat as input-only
-        session = sessions.get(chat_id)
+        session = session_service.get(chat_id)
         if not session:
             pages = render_screen(ui, "unknown_input", {})
             return [p for p in pages]
@@ -369,25 +408,15 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
 
     # handle /cancel
     if cmd == "/cancel":
-        sessions.clear(chat_id)
-        pages = render_screen(ui, "canceled", {})
-        return [p for p in pages]
+        return await system_handler.handle_cancel(chat_id=chat_id)
 
     # handle /exit (alias for closing any sticky session)
     if cmd == "/exit":
-        sessions.clear(chat_id)
-        pages = render_screen(ui, "canceled", {})
-        return [p for p in pages]
+        return await system_handler.handle_exit(chat_id=chat_id)
 
     # handle /help
     if cmd == "/help":
-        # End any existing sticky session when a new root command arrives
-        existing = sessions.get(chat_id) or {}
-        if existing.get("sticky"):
-            sessions.clear(chat_id)
-        # Prefer ui.yml help screen, fallback to dynamic builder
-        pages = render_screen(ui, "help", {})
-        return [p for p in pages]
+        return await system_handler.handle_help(chat_id=chat_id)
 
     spec = registry.get(cmd)
     if not spec:
@@ -396,9 +425,10 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
         return [p for p in pages]
 
     # If switching away from a sticky session to a different command, clear it
-    existing = sessions.get(chat_id) or {}
-    if existing and existing.get("cmd") != spec.name and existing.get("sticky"):
-        sessions.clear(chat_id)
+    existing = session_service.get(chat_id) or {}
+    if session_service.should_clear_session(spec, existing):
+        session_service.clear(chat_id)
+        existing = {}
 
     # session merge
     got = existing.get("got") if existing.get("cmd") == spec.name else {}
@@ -410,19 +440,38 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
     if spec.name == "/cash_remove":
         confirm_state = existing.get("confirm")
         if confirm_state and not (text or "").strip().startswith("/"):
-            answer_raw = (tokens[0] if tokens else (text or "")).strip().lower()
-            if answer_raw in ("y", "yes"):
+            should_proceed, dispatch_values, response_pages = portfolio_handler.handle_confirmation_response(
+                chat_id=chat_id,
+                spec=spec,
+                text=text,
+                tokens=tokens,
+                confirm_state=confirm_state
+            )
+            if response_pages:
+                return response_pages
+            if should_proceed:
+                dispatch_override = dispatch_values
                 values = dict(confirm_state.get("values", {}))
                 missing = []
                 err = None
-                dispatch_override = dict(confirm_state.get("payload", {}))
-            elif answer_raw in ("n", "no"):
-                sessions.clear(chat_id)
-                pages = render_screen(ui, "cash_remove_cancelled", confirm_state.get("ui", {}))
-                return [p for p in pages] if pages else []
-            else:
-                pages = render_screen(ui, "cash_remove_confirm", confirm_state.get("ui", {}))
-                return [p for p in pages] if pages else []
+
+    if spec.name == "/remove":
+        confirm_state = existing.get("confirm")
+        if confirm_state and not (text or "").strip().startswith("/"):
+            should_proceed, dispatch_values, response_pages = portfolio_handler.handle_confirmation_response(
+                chat_id=chat_id,
+                spec=spec,
+                text=text,
+                tokens=tokens,
+                confirm_state=confirm_state
+            )
+            if response_pages:
+                return response_pages
+            if should_proceed:
+                dispatch_override = dispatch_values
+                values = dict(confirm_state.get("values", {}))
+                missing = []
+                err = None
 
     if dispatch_override is None:
         values, missing, err = validate_args(spec.args_schema, tokens, got=got, cmd_name=spec.name)
@@ -445,21 +494,26 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
 
     if missing or (should_prompt_when_empty and user_provided_no_args):
         # Start a sticky session if command is configured as sticky
-        sticky = spec.name in get_sticky_commands()
-        sessions.set(chat_id, {
-            "chat_id": chat_id,
-            "cmd": spec.name,
-            "expected": [f["name"] for f in spec.args_schema],
-            "got": values,
-            "missing_from": missing,
-            "sticky": sticky,
-        })
+        session_service.create_session(
+            chat_id,
+            spec,
+            values=values,
+            missing=missing,
+        )
         # Prefer UI screens first; otherwise minimal fallback
         msg = None
         # UI generic command prompt mapping: /cmd -> cmd_prompt
         screen_key = spec.name.lstrip("/") + "_prompt"
         ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
         prompt_data = {"ttl_min": ttl_min}
+
+        # For /cash_remove, get current cash balance for prompt
+        if spec.name == "/cash_remove":
+            cash_balance = await portfolio_handler.handle_cash_overview(
+                user_context=user_context,
+                return_formatted_only=True
+            )
+            prompt_data.update({"cash_balance": cash_balance})
 
         # For /allocation_edit, fetch current allocation data to show in prompt
         if spec.name == "/allocation_edit":
@@ -514,7 +568,7 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
     # ready to dispatch
     # For sticky sessions, keep the session alive after each success
     clear_after = True
-    if spec.name in get_sticky_commands() and existing and existing.get("cmd") == spec.name and existing.get("sticky"):
+    if session_service.is_sticky(spec.name) and existing and existing.get("cmd") == spec.name and existing.get("sticky"):
         clear_after = False
     dispatch_values = dispatch_override or values
     if spec.dispatch.get("service") == "portfolio_core":
@@ -525,7 +579,7 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
             pages = render_screen(ui, "service_error", {"message": "User context unavailable. Please retry.", "usage": usage, "example": example})
             return [p for p in pages] if pages else []
         if dispatch_override is None:
-            dispatch_values = _prepare_portfolio_payload(spec.name, dict(values))
+            dispatch_values = prepare_portfolio_payload(spec.name, dict(values), formatting_service)
             method = spec.dispatch.get("method", "GET").upper()
             if method == "POST":
                 op_id = dispatch_values.get("op_id")
@@ -534,29 +588,17 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
                     dispatch_values["op_id"] = op_id
                 values["op_id"] = op_id
             if spec.name == "/cash_remove":
-                amount_dec = _to_decimal(dispatch_values.get("amount_eur"))
-                if amount_dec <= 0:
-                    usage = spec.help.get("usage", "")
-                    example = spec.help.get("example", "")
-                    pages = render_screen(ui, "invalid_template", {"error": "amount must be greater than 0", "usage": usage, "example": example})
-                    return [p for p in pages] if pages else []
-                ui_payload = {"amount_display": _format_eur(dispatch_values.get("amount_eur"))}
-                session_data = {
-                    "chat_id": chat_id,
-                    "cmd": spec.name,
-                    "expected": [],
-                    "got": values,
-                    "missing_from": [],
-                    "sticky": spec.name in get_sticky_commands(),
-                    "confirm": {
-                        "payload": dict(dispatch_values),
-                        "values": dict(values),
-                        "ui": ui_payload,
-                    },
-                }
-                sessions.set(chat_id, session_data)
-                pages = render_screen(ui, "cash_remove_confirm", ui_payload)
-                return [p for p in pages] if pages else []
+                return portfolio_handler.handle_cash_remove_confirmation(
+                    chat_id=chat_id,
+                    spec=spec,
+                    values=values
+                )
+            if spec.name == "/remove":
+                return portfolio_handler.handle_remove_confirmation(
+                    chat_id=chat_id,
+                    spec=spec,
+                    values=values
+                )
     resp = await dispatcher.dispatch(spec.dispatch, dispatch_values, user_context)
     if not isinstance(resp, dict) or not resp.get("ok", False):
         err = (resp or {}).get("error", {})
@@ -564,468 +606,68 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
         example = spec.help.get("example", "")
         code = err.get("code") if isinstance(err, dict) else None
         if spec.name == "/fx":
-            # Build a UI-driven message; do not leak backend text
-            base = (values.get("base", "") or "").upper()
-            quote = (values.get("quote", "") or "").upper()
-            pages = render_screen(ui, "fx_error", {"base": base or "?", "quote": quote or "?", "usage": usage, "example": example})
-            return [p for p in pages]
+            return market_handler.handle_fx_error(
+                spec=spec,
+                values=values,
+                usage=usage,
+                example=example,
+            )
         if spec.name == "/remove" and code == "NOT_FOUND":
             symbol = (values.get("symbol") or "").upper()
             pages = render_screen(ui, "remove_not_owned", {"symbol": symbol})
-            sessions.clear(chat_id)
+            session_service.clear(chat_id)
             return [p for p in pages] if pages else []
         if spec.name == "/cash_remove":
-            sessions.clear(chat_id)
+            session_service.clear(chat_id)
+        if spec.name == "/remove":
+            session_service.clear(chat_id)
         message = err.get("message") if isinstance(err, dict) else None
         pages = render_screen(ui, "service_error", {"message": message or "Internal error", "usage": usage, "example": example})
         return [p for p in pages]
 
     # success mapping by command
-    if spec.name == "/price":
-        data = resp.get("data", {})
-        quotes = data.get("quotes") or []
-        # If no quotes, prompt again (keep session open if sticky)
-        if not quotes:
-            # Always keep session open on errors (fully invalid input)
-            sessions.set(chat_id, {
-                "chat_id": chat_id,
-                "cmd": "/price",
-                "expected": [f["name"] for f in spec.args_schema],
-                "got": {},
-                "missing_from": [],
-                "sticky": spec.name in get_sticky_commands(),
-            })
-            # Prefer UI screens showing missing symbols when available.
-            # For no-quotes responses, treat all requested as missing.
-            ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
-            req_syms = [str(x).upper() for x in (values.get("symbols") or [])]
-            if req_syms:
-                pages = render_screen(ui, "price_not_found", {"ttl_min": ttl_min, "not_found_symbols": req_syms})
-            else:
-                pages = render_screen(ui, "price_prompt", {"ttl_min": ttl_min})
-            return [p for p in pages]
+    handlers, analytic_commands = build_success_handlers(
+        market_handler,
+        portfolio_handler,
+        trading_handler,
+        ui,
+        resp,
+        chat_id,
+        spec,
+        values,
+        clear_after,
+    )
 
-        # Build rows for table (compact for mobile); keep headers short and uppercase
-        rows: List[List[str]] = [["TICKER", "NOW", "OPEN", "%", "MARKET", "AGE"]]
+    handler_fn = handlers.get(spec.name)
+    if handler_fn is not None:
+        result = handler_fn()
+        if inspect.isawaitable(result):
+            return await result
+        return result
 
-        def _market_label(sym: str, market_code: str) -> str:
-            sfx = ""
-            if "." in sym:
-                sfx = sym.split(".")[-1].upper()
-            code = (market_code or "").upper()
-            # Prefer a specific suffix over generic country codes
-            cand = [sfx, code]
-            m = {
-                # US
-                "US": "US", "NYSE": "NYS", "NASDAQ": "NAS", "NSDQ": "NAS",
-                # Germany / Xetra
-                "XETRA": "XET", "DE": "XET", "FWB": "XET",
-                # UK
-                "LSE": "LSE", "LON": "LSE",
-                # Canada
-                "TSX": "TSX", "TSXV": "TSV",
-                # Japan
-                "TSE": "TYO", "JPX": "TYO",
-                # Australia
-                "ASX": "ASX",
-                # Switzerland
-                "SIX": "SIX", "SWX": "SIX",
-                # France / Euronext Paris
-                "PAR": "PAR", "EPA": "PAR",
-                # Netherlands / Euronext Amsterdam
-                "AMS": "AMS", "AEX": "AMS",
-                # Spain
-                "BME": "MAD", "MCE": "MAD",
-                # Hong Kong
-                "HK": "HK", "HKEX": "HK",
-                # Singapore
-                "SGX": "SG",
-            }
-            for k in cand:
-                if k and k in m:
-                    return m[k]
-            # Fallback to suffix or code or '-'
-            return sfx or code or "-"
-
-        def _freshness_label(fresh: str) -> str:
-            f = (fresh or "").lower()
-            if "live" in f:
-                return "L"
-            if "prev" in f:
-                return "P"
-            if "eod" in f or "end of day" in f:
-                return "E"
-            if "delay" in f:
-                return "D"
-            return f.upper()[:3] if f else "n/a"
-        for q in quotes:
-            sym = str(q.get("symbol") or "").upper()
-            disp = sym.replace(".US", "")
-            market = (q.get("market") or "").upper()
-            star = "*" if market and market != "US" else ""
-            try:
-                now_eur = float(q.get("price_eur")) if q.get("price_eur") is not None else None
-                open_eur = float(q.get("open_eur")) if q.get("open_eur") is not None else None
-            except Exception:
-                now_eur = None
-                open_eur = None
-            pct = None
-            if now_eur is not None and open_eur is not None and open_eur != 0:
-                pct = (now_eur - open_eur) / open_eur * 100.0
-            n_txt = euro(now_eur) if now_eur is not None else "n/a"
-            o_txt = euro(open_eur) if open_eur is not None else "n/a"
-            pct_txt = f"{pct:+.1f}%" if pct is not None else "n/a"
-            market_col = _market_label(sym, market)
-            freshness = _freshness_label(str(q.get("freshness") or ""))
-            rows.append([f"{disp}{star}", n_txt, o_txt, pct_txt, market_col, freshness])
-        # Choose UI screen
-        partial = bool(resp.get("partial"))
-        details = resp.get("error", {}).get("details", {}) if isinstance(resp.get("error"), dict) else {}
-        failed = details.get("symbols_failed") or []
-        # Compute effective missing list: use upstream details if present; otherwise derive from request vs response
-        requested = [str(x).upper() for x in (values.get("symbols") or [])] if isinstance(values.get("symbols"), list) else []
-        present = [str(q.get("symbol") or "").upper() for q in quotes]
-        derived_missing = [s for s in requested if not any(p.startswith(s) for p in present)] if requested else []
-        eff_failed = failed or derived_missing
-        data_ui = {"table_rows": rows, "not_found_symbols": (eff_failed or [])}
-        has_missing = isinstance(eff_failed, list) and len(eff_failed) > 0
-        base_screen = "price_partial_error" if has_missing else "price_partial_note" if partial else "price_result"
-        screen = base_screen
-        screen_payload = dict(data_ui)
-        # Always show helpful hints (always use sticky versions)
-        ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
-        screen_payload["ttl_min"] = ttl_min
-        pages = render_screen(ui, screen, screen_payload)
-        text = pages[0]
-        # Session handling: keep session open for any error cases (partial or missing list)
-        if partial or has_missing:
-            sessions.set(chat_id, {
-                "chat_id": chat_id,
-                "cmd": "/price",
-                "expected": [f["name"] for f in spec.args_schema],
-                "got": {},
-                "missing_from": [],
-                "sticky": spec.name in get_sticky_commands(),
-            })
-        elif not clear_after:
-            # Already an interactive session -> refresh TTL
-            sessions.set(chat_id, {
-                "chat_id": chat_id,
-                "cmd": "/price",
-                "expected": [f["name"] for f in spec.args_schema],
-                "got": {},
-                "missing_from": [],
-                "sticky": spec.name in get_sticky_commands(),
-            })
-        else:
-            sessions.clear(chat_id)
-        # Common footnotes (partial failures) if we didn't already render a partial-error screen
-        footnotes_common_str = ""
-        if not has_missing:
-            if resp.get("partial") or (isinstance(resp.get("error"), dict) and resp.get("error", {}).get("details")):
-                details = resp.get("error", {}).get("details", {}) if isinstance(resp.get("error"), dict) else {}
-                failed2 = details.get("symbols_failed") or eff_failed or []
-                # Use copies for message text, avoid hard-coded strings
-                msg_nf = "Some symbols were not found."
-                if failed2:
-                    head = msg_nf
-                    body = [" ".join(failed2)] if isinstance(failed2, list) else [str(failed2)]
-                    footnotes_common_str = mdv2_expandable_blockquote([head], body)
-                else:
-                    # Partial without explicit details: still inform the user
-                    footnotes_common_str = mdv2_blockquote([msg_nf])
-
-        # Append partial-footnote hints only when the session closes
-        if clear_after and footnotes_common_str:
-            text = f"{text}\n\n{footnotes_common_str}"
-
-        return [text]
-    if spec.name == "/fx":
-        data = resp.get("data", {})
-        # Prompt flow when no args provided
-        if data.get("fx_prompt"):
-            # Open a session to accept base/quote next (sticky if configured)
-            sticky = spec.name in get_sticky_commands()
-            sessions.set(chat_id, {
-                "chat_id": chat_id,
-                "cmd": "/fx",
-                "expected": [f["name"] for f in spec.args_schema],
-                "got": {},
-                "missing_from": [],
-                "sticky": sticky,
-            })
-            ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
-            pages = render_screen(ui, "fx_prompt", {"ttl_min": ttl_min})
-            return [p for p in pages]
-
-        # Check for existing session to determine sticky behavior
-        existing = sessions.get(chat_id)
-        clear_after = True
-        if spec.name in get_sticky_commands() and existing and existing.get("cmd") == spec.name and existing.get("sticky"):
-            clear_after = False
-
-        rate = data.get("rate") or data.get("close") or data.get("price")
-        pair = (str(data.get("pair")) or "").upper()
-        # fx upstream returns pair sometimes; keep inputs for clarity
-        base = (values.get("base", "") or data.get("base") or "").upper()
-        quote = (values.get("quote", "") or data.get("quote") or "").upper()
-        if (not base or not quote) and pair:
-            parts = pair.replace("-", "_").split("_")
-            if len(parts) == 2:
-                base = base or parts[0]
-                quote = quote or parts[1]
-
-        # Invert if user requested EUR/USD but upstream pair is USD_EUR
-        rate_disp = rate
-        try:
-            rnum = float(rate)
-        except Exception:
-            rnum = None
-        if pair == "USD_EUR" and base == "EUR" and quote == "USD" and rnum and rnum != 0.0:
-            rate_disp = 1.0 / rnum
-
-        # Display: round to 4 decimals for communication purposes,
-        # but leave upstream data untouched for any calculations elsewhere.
-        try:
-            rate_str = f"{float(rate_disp):.4f}"
-        except Exception:
-            rate_str = str(rate_disp)
-
-        # Always show helpful hints
-        ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
-        pages = render_screen(ui, "fx_result", {"base": base or "?", "quote": quote or "?", "rate": rate_str, "ttl_min": ttl_min})
-
-        # Session handling: same logic as other sticky commands
-        if not clear_after:
-            # Already an interactive session -> refresh TTL
-            sticky = spec.name in get_sticky_commands()
-            sessions.set(chat_id, {
-                "chat_id": chat_id,
-                "cmd": "/fx",
-                "expected": [f["name"] for f in spec.args_schema],
-                "got": {},
-                "missing_from": [],
-                "sticky": sticky,
-            })
-        else:
-            # Fresh command -> clear session after success
-            sessions.clear(chat_id)
-
-        return [p for p in pages]
-    # Portfolio command success screens
-    if spec.name in ("/buy", "/sell"):
-        key = "buy_success" if spec.name == "/buy" else "sell_success"
-        pages = render_screen(ui, key, values)
-        sessions.clear(chat_id)
-        return [p for p in pages]
-    elif spec.name == "/add":
-        pages = render_screen(ui, "add_success", values)
-        sessions.clear(chat_id)
-        return [p for p in pages]
-    elif spec.name == "/remove":
-        pages = render_screen(ui, "remove_success", values)
-        sessions.clear(chat_id)
-        return [p for p in pages]
-    elif spec.name == "/cash_add":
-        ui_values = dict(values)
-        if values.get("amount_eur") is not None:
-            ui_values["amount"] = _format_eur(values.get("amount_eur"))
-        pages = render_screen(ui, "cash_add_success", ui_values)
-        sessions.clear(chat_id)
-        return [p for p in pages]
-    elif spec.name == "/allocation_edit":
-        # Map user input to UI field names (fallback when API fails)
-        success_data = {
-            "stock_target_pct": values.get("stock_pct", 0),
-            "etf_target_pct": values.get("etf_pct", 0),
-            "crypto_target_pct": values.get("crypto_pct", 0),
-        }
-        pages = render_screen(ui, "allocation_edit_success", success_data)
-        sessions.clear(chat_id)
-        return [p for p in pages]
-    elif spec.name == "/rename":
-        rename_payload = resp.get("data", {}).get("rename", {}) or {}
-        symbol = (rename_payload.get("symbol") or values.get("symbol") or "").upper()
-        nickname_raw = rename_payload.get("display_name") or values.get("display_name") or ""
-        nickname = nickname_raw.strip()
-        pages = render_screen(ui, "rename_success", {"symbol": symbol, "nickname": nickname})
-        sessions.clear(chat_id)
-        return [p for p in pages]
+    if spec.name in analytic_commands:
+        return analytic_json_pages(ui, resp)
 
 
-    # Portfolio read commands with table formatting
-    elif spec.name == "/portfolio":
-        return _portfolio_pages_with_fallback(ui, resp.get("data", {}))
+def analytic_json_pages(ui, resp):
+    """Handle analytic commands that return JSON data."""
+    data = resp.get("data", {})
+    if not data:
+        return [render_screen(ui, "service_error", {"message": "No data available", "usage": "", "example": ""})[0]]
 
-    elif spec.name == "/add":
-        symbol = (values.get("symbol") or "").upper()
-        qty_text = _format_quantity(values.get("qty"))
-        success_pages = render_screen(ui, "add_success", {"symbol": symbol, "qty": qty_text}) or []
-        snapshot_pages = _portfolio_pages_with_fallback(ui, resp.get("data", {}))
-        sessions.clear(chat_id)
-        return success_pages + snapshot_pages
-
-    elif spec.name == "/remove":
-        symbol = (values.get("symbol") or "").upper()
-        success_pages = render_screen(ui, "remove_success", {"symbol": symbol}) or []
-        snapshot_pages = _portfolio_pages_with_fallback(ui, resp.get("data", {}))
-        sessions.clear(chat_id)
-        return success_pages + snapshot_pages
-
-    elif spec.name == "/cash_add":
-        amount_display = _format_eur(values.get("amount_eur"))
-        success_pages = render_screen(ui, "cash_add_success", {"amount_display": amount_display}) or []
-        snapshot_pages = _portfolio_pages_with_fallback(ui, resp.get("data", {}))
-        sessions.clear(chat_id)
-        return success_pages + snapshot_pages
-
-    elif spec.name == "/cash_remove":
-        amount_display = _format_eur(values.get("amount_eur"))
-        success_pages = render_screen(ui, "cash_remove_success", {"amount_display": amount_display}) or []
-        snapshot_pages = _portfolio_pages_with_fallback(ui, resp.get("data", {}))
-        sessions.clear(chat_id)
-        return success_pages + snapshot_pages
-
-    elif spec.name == "/buy":
-        symbol = (values.get("symbol") or "").upper()
-        qty_text = _format_quantity(values.get("qty"))
-        price_display = "market"
-        if values.get("price_eur") not in (None, ""):
-            price_display = _format_eur(values.get("price_eur"))
-        success_pages = render_screen(ui, "buy_success", {"symbol": symbol, "qty": qty_text, "price_ccy": price_display}) or []
-        snapshot_pages = _portfolio_pages_with_fallback(ui, resp.get("data", {}))
-        sessions.clear(chat_id)
-        return success_pages + snapshot_pages
-
-    elif spec.name == "/sell":
-        symbol = (values.get("symbol") or "").upper()
-        qty_text = _format_quantity(values.get("qty"))
-        price_display = "market"
-        if values.get("price_eur") not in (None, ""):
-            price_display = _format_eur(values.get("price_eur"))
-        success_pages = render_screen(ui, "sell_success", {"symbol": symbol, "qty": qty_text, "price_ccy": price_display}) or []
-        snapshot_pages = _portfolio_pages_with_fallback(ui, resp.get("data", {}))
-        sessions.clear(chat_id)
-        return success_pages + snapshot_pages
-
-    elif spec.name == "/cash":
-        cash_dec = _to_decimal(resp.get("data", {}).get("cash_eur"))
-        if cash_dec == 0:
-            pages = render_screen(ui, "cash_zero", {})
-            return [p for p in pages] if pages else []
-        pages = render_screen(ui, "cash_result", {"cash_balance": _format_eur(cash_dec)})
-        return [p for p in pages] if pages else []
-
-    elif spec.name == "/tx":
-        payload = resp.get("data", {})
-        transactions = payload.get("transactions", []) or []
-        if not transactions:
-            pages = render_screen(ui, "tx_empty", {})
-            return [p for p in pages] if pages else []
-        rows: List[List[str]] = [["DATE", "TYPE", "SYMBOL", "QTY", "AMOUNT"]]
-        for tx in transactions:
-            ts_raw = tx.get("ts")
-            timestamp = ts_raw.replace("T", " ")[:16] if isinstance(ts_raw, str) and ts_raw else ""
-            tx_type = str(tx.get("type") or "").upper()
-            symbol = str(tx.get("symbol") or "CASH")
-            qty = _format_quantity(tx.get("qty")) if tx.get("qty") is not None else ""
-            amount = _format_eur(tx.get("amount_eur")) if tx.get("amount_eur") is not None else ""
-            rows.append([timestamp, tx_type, symbol, qty, amount])
-        count = payload.get("count")
-        total = count if isinstance(count, int) else len(transactions)
-        summary = f"Showing {total} transaction{'s' if total != 1 else ''}"
-        pages = render_screen(ui, "tx_result", {"transaction_summary": summary, "table_rows": rows})
-        return [p for p in pages] if pages else []
-    elif spec.name == "/allocation":
-        allocation = resp.get("data", {}) or {}
-        pages = _allocation_table_pages(ui, ("Current", allocation.get("current")), ("Target", allocation.get("target")))
-        return pages
-
-    elif spec.name == "/allocation_edit":
-        allocation = resp.get("data", {}) or {}
-
-        # Extract target values from API response (best practice: use saved values)
-        target = allocation.get("target", {})
-        success_data = {
-            "stock_target_pct": target.get("stock_pct", values.get("stock_pct", 0)),
-            "etf_target_pct": target.get("etf_pct", values.get("etf_pct", 0)),
-            "crypto_target_pct": target.get("crypto_pct", values.get("crypto_pct", 0)),
-        }
-
-        pages = render_screen(ui, "allocation_edit_success", success_data)
-        sessions.clear(chat_id)
-        return [p for p in pages] if pages else []
-
-    elif spec.name == "/rename":
-        rename_payload = resp.get("data", {}).get("rename", {}) or {}
-        symbol = (rename_payload.get("symbol") or values.get("symbol") or "").upper()
-        nickname_raw = rename_payload.get("display_name") or values.get("display_name") or ""
-        nickname = nickname_raw.strip()
-        pages = render_screen(ui, "rename_success", {"symbol": symbol, "nickname": nickname})
-        sessions.clear(chat_id)
-        return [p for p in pages] if pages else []
-    # For other read-only portfolio commands, display the service response as formatted JSON (temporary)
-    elif spec.name in ["/portfolio_snapshot", "/portfolio_summary",
-                       "/portfolio_breakdown", "/portfolio_digest", "/portfolio_movers", "/po_if"]:
-        # Format the JSON response nicely for display
+    # For analytic commands, render the JSON data as a simple table or formatted text
+    # This is a fallback implementation - specific handlers should be used for better formatting
+    if isinstance(data, dict) and "table_rows" in data:
+        return render_screen(ui, "portfolio_result", data)
+    else:
+        # Simple text representation for other data
         import json
-        data = resp.get("data", {})
-        if data:
-            formatted_json = json.dumps(data, indent=2, ensure_ascii=False)
-            return [f"```json\n{formatted_json}\n```"]
-        else:
-            return ["No data available"]
-
-    # Default success (only for modification commands without specific screens)
-    pages = render_screen(ui, "done", {})
-    return [p for p in pages]
+        formatted_data = json.dumps(data, indent=2, ensure_ascii=False)
+        return [f"```json\n{formatted_data}\n```"]
 
 
-async def _poll_updates():
-    s, registry, sessions, idemp, dispatcher, http = deps()
-    token = s.TELEGRAM_BOT_TOKEN
-    base = f"https://api.telegram.org/bot{token}"
-    offset = None
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        while True:
-            try:
-                params = {"timeout": 25}
-                if offset is not None:
-                    params["offset"] = offset
-                r = await client.get(f"{base}/getUpdates", params=params)
-                j = r.json()
-                if not j.get("ok"):
-                    await asyncio.sleep(1.0)
-                    continue
-                for upd in j.get("result", []):
-                    update = TelegramUpdate.model_validate(upd)
-                    msg = update.get_message()
-                    if not msg:
-                        offset = update.update_id + 1
-                        continue
-                    chat_id = msg.chat.id
-                    sender_id = (msg.from_.id if msg.from_ else 0) or 0
-                    text = msg.text or msg.caption or ""
-                    if idemp.seen(chat_id, update.update_id):
-                        offset = update.update_id + 1
-                        continue
-                    user_context = {}
-                    if msg.from_:
-                        user_context = {
-                            "user_id": msg.from_.id,
-                            "first_name": getattr(msg.from_, 'first_name', ''),
-                            "last_name": getattr(msg.from_, 'last_name', ''),
-                            "username": msg.from_.username,
-                            "language_code": getattr(msg.from_, 'language_code', 'en'),
-                        }
-                    replies = await process_text(chat_id, sender_id, text, (s, registry, sessions, idemp, dispatcher, http), user_context)
-                    for rtxt in replies:
-                        for chunk in paginate(rtxt):
-                            await send_telegram_message(s.TELEGRAM_BOT_TOKEN, chat_id, chunk, s.REPLY_PARSE_MODE)
-                    offset = update.update_id + 1
-            except Exception as e:
-                json_log(action="poll", status="error", error=str(e))
-                await asyncio.sleep(1.0)
+
+
 @app.get("/health")
 async def health():
     return {"ok": True, "ts": int(time.time())}
@@ -1064,7 +706,7 @@ async def telegram_webhook(request: Request, x_telegram_bot_api_secret_token: Op
                 "first_name": getattr(msg.from_, 'first_name', ''),
                 "last_name": getattr(msg.from_, 'last_name', ''),
                 "username": msg.from_.username,
-                "language_code": getattr(msg.from_, 'language_code', 'en')
+                "language_code": getattr(msg.from_, 'language_code', 'en'),
             }
 
         replies = await process_text(chat_id, sender_id, text, (s, registry, sessions, idemp, dispatcher, http), user_context)
@@ -1094,7 +736,7 @@ async def telegram_test(body: TestRouteIn):
         "first_name": "Test",
         "last_name": "User",
         "username": "testuser",
-        "language_code": "en"
+        "language_code": "en",
     }
     replies = await process_text(chat_id, sender_id, text, (s, registry, sessions, idemp, dispatcher, http), user_context)
     # Also send via Telegram for parity
@@ -1102,5 +744,3 @@ async def telegram_test(body: TestRouteIn):
         for chunk in paginate(r):
             await send_telegram_message(s.TELEGRAM_BOT_TOKEN, chat_id, chunk, s.REPLY_PARSE_MODE)
     return {"ok": True}
-
-

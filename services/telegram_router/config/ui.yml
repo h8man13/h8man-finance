@@ -32,7 +32,10 @@
 snippets:
   symbol_error:
     - paragraph: "⚠️ Unfortunately, I couldn't find quotes for some of the tickers you requested. Please check the list below and update them, or send new ones without rerunning /price."
-
+  
+  session_hint_header:
+    - paragraph: "💡 Keep in mind:"
+  
   session_hint:
     - bullets:
           items:
@@ -100,7 +103,7 @@ screens:
       - bullets:
           items:
             - "Enter 1 to 10 tickers, separated by spaces."
-            - "For example, enter: NVDA AAPL"
+            - "Example: enter NVDA AAPL"
             - "Tickers default to .US (e.g. NVDA). For other markets, add a suffix like TSLA.XETRA to ensure correct currency conversion."
             - "Session auto-closes after {ttl_min} minutes or when you send another command."
 
@@ -109,7 +112,7 @@ screens:
     blocks:
       - table:
           rows: "{table_rows}"
-      - paragraph: "💡 Keep in mind:"
+      - include: session_hint_header
       - include: session_hint
 
   # /price - quotes returned & partial with explicit missing list
@@ -144,7 +147,7 @@ screens:
       - bullets:
           items:
             - "Enter a pair with 3-letter codes, separated by a space."
-            - "For example, enter: USD EUR"
+            - "Try: USD EUR"
             - "Session auto-closes after {ttl_min} minutes or when you send another command."
 
   # /fx – success result for any pair BASE/QUOTE
@@ -152,15 +155,16 @@ screens:
     blocks:
       - paragraph: "{base} → {quote}: {rate}"
       - spacer: { lines: 1 }
-      - paragraph: "💡 Keep in mind:"
+      - include: session_hint_header
       - include: fx_session_hint
 
   # FX-specific errors (e.g., unsupported pair or upstream failure)
   fx_error:
     blocks:
-      - paragraph: "⚠️ Unfortunately, I couldn't fetch a valid rate for {base} → {quote}. This may happen if the pair isn't supported or the market is unavailable."
+      - paragraph: "⚠️ Unfortunately, I couldn't fetch a valid rate for {base} → {quote}."
+      - paragraph: "This may happen if the pair isn't supported or the market is unavailable."
       - spacer: { lines: 1 }
-      - paragraph: "Try: /fx USD EUR"
+      - paragraph: "Try: USD EUR"
 
   # ===================
   # PORTFOLIO COMMANDS
@@ -169,15 +173,15 @@ screens:
   # /portfolio – empty portfolio guidance for new users
   portfolio_empty:
     blocks:
-      - header: "Your portfolio is empty"
+      - header: "⚠️ Your portfolio is empty"
       - paragraph: "Get started by adding some positions or cash to track your investments."
       - spacer: { lines: 1 }
       - paragraph: "💡 Quick start options:"
       - bullets:
           items:
-            - "Add cash: /cash_add 1000 (adds €1,000 to your balance)"
+            - "Add cash: /cash_add 1000 (adds 1,000 € to your balance)"
             - "Add a position: /add 10 AAPL.US (adds 10 Apple shares to your portfolio)"
-            - "Buy shares: /buy 5 MSFT 300 (records 5 Microsoft shares at €300€ each)"
+            - "Buy shares: /buy 5 MSFT 300 (records 5 Microsoft shares at 300 € each)"
       - spacer: { lines: 1 }
       - paragraph: "Once you have some positions, use /portfolio to see a snapshot of your holdings."
 
@@ -185,9 +189,9 @@ screens:
   portfolio_result:
     blocks:
       - header: "💰 Total Portfolio Value: {total_value}"
-      - spacer: { lines: 1 }
       - table:
           rows: "{table_rows}"
+      - include: session_hint_header    
       - bullets:
           items:
             - "Values are shown in EUR and may differ slightly from your broker."
@@ -249,7 +253,7 @@ screens:
     blocks:
       - table:
           rows: "{table_rows}"
-      - paragraph: "💡 Keep in mind:"
+      - include: session_hint_header
       - bullets:
           items:
             - "Rebalancing is recommended quarterly or when gaps exceed 5%."
@@ -260,7 +264,6 @@ screens:
   allocation_edit_prompt:
     blocks:
       - header: "Set your target allocation percentages"
-      - spacer: { lines: 1 }
       - paragraph: "Your current set targets:"
       - bullets:
           items:
@@ -271,13 +274,12 @@ screens:
       - bullets:
           items:
             - "Update by entering Stock %, ETF %, and Crypto % (total must be 100)."
-            - "For example: /allocation_edit 30 60 10"
+            - "Example: /allocation_edit 30 60 10"
 
   # /allocation_edit – success message
   allocation_edit_success:
     blocks:
       - header: "✅ Allocation targets updated."
-      - spacer: { lines: 1 }
       - paragraph: "Your new targets:"
       - bullets:
           items:
@@ -292,7 +294,7 @@ screens:
       - bullets:
           items:
             - "Enter ticker and your preferred nickname."
-            - "Example: /rename AAPL.US Apple Inc"
+            - "Try: AAPL Apple Inc"
             - "Nicknames help you identify holdings more easily."
 
   # /rename – success message
@@ -307,36 +309,34 @@ screens:
       - bullets:
           items:
             - "Enter how many transactions to show (1-50)."
-            - "Example: /tx 10"
+            - "Try: 10"
             - "Leave empty to see the last 10 transactions."
 
   # /tx – transaction history result
   tx_result:
     blocks:
-      - paragraph: "{transaction_summary}"
-      - spacer: { lines: 1 }
+      - header: "🔄 {transaction_summary}"
       - table:
           rows: "{table_rows}"
 
   tx_empty:
     blocks:
-      - paragraph: "No transactions yet."
+      - header: "⚠️ No transactions yet."
+      - paragraph: "Get started by adding cash or recording your first trades:"
       - bullets:
           items:
-          - "Add holdings with /add or record trades with /buy and /sell."
-          - "Add cash with /cash_add 1000."
+          - "Add holdings with /add or record trades with /buy and /sell"
+          - "Add cash with /cash_add"
 
   # /cash – cash balance result
   cash_result:
     blocks:
-      - paragraph: "Cash balance: {cash_balance}"
+      - paragraph: "Your current cash balance: {cash_balance}"
 
   cash_zero:
       blocks:
-        - paragraph: "Cash balance: 0.00€"
-        - bullets:
-            items:
-            - "Add funds with /cash_add 1000."
+        - paragraph: "💸 Your cash balance is empty."
+        - paragraph: "Use /cash_add to start tracking cash alongside your investments"
 
   # /cash_add – missing args prompt
   cash_add_prompt:
@@ -344,9 +344,9 @@ screens:
       - header: "Add cash to your portfolio"
       - bullets:
           items:
-            - "Enter the amount in EUR"
-            - "Example: /cash_add 1000"
-            - "This adds 1,000€ to your available cash balance."
+            - "Enter the amount in EUR."
+            - "Try: 1000"
+            - "This adds 1,000 € to your cash balance."
 
   # /cash_add – success message
   cash_add_success:
@@ -355,25 +355,28 @@ screens:
 
   cash_remove_prompt:
       blocks:
-        - header: Remove cash from your account
+        - header: "Remove cash from your portfolio"
+        - paragraph: "Your current cash balance is {cash_balance}."
+        - spacer: { lines: 1 }
         - bullets:
             items:
             - "Enter the amount to remove in EUR."
-            - "Example: /cash_remove 500"
-            - "Reply with Y to confirm or N to cancel."
+            - "Try: 500"
+            - "This removes 500 € from your cash balance."
 
   cash_remove_confirm:
       blocks:
-        - paragraph: "Remove {amount_display} from cash balance?"
-        - paragraph: "Reply with Y or N."
+        - paragraph: "Are you sure you want to remove {amount_display} from your cash balance?"
+        - spacer: { lines: 1 }
+        - paragraph: "👉 Reply with Y or N."
 
   cash_remove_success:
       blocks:
-        - paragraph: "✅ Removed {amount_display} from cash balance"
+        - paragraph: "✅ Removed {amount_display} from cash balance. New balance: {new_balance}"
 
   cash_remove_cancelled:
       blocks:
-        - paragraph: "Cash removal cancelled. {amount_display} remains in cash."
+        - paragraph: "Got it, no changes made. You still have {amount_display} in cash."
 
   # ===================
   # TRADING COMMANDS
@@ -385,9 +388,9 @@ screens:
       - header: "Record a buy transaction"
       - bullets:
           items:
-            - "Enter quantity, ticker, and price per share in your base currency."
-            - "Example: /buy 10 AAPL 150"
-            - "This will record a buy of 10 Apple shares at 150€ each."
+            - "Enter the number of shares, ticker, and price per share in EUR."
+            - "Try: 10 AAPL 150"
+            - "This will record a buy of 10 Apple shares at 150 € each."
 
   # /buy – success message
   buy_success:
@@ -400,9 +403,9 @@ screens:
       - header: "Record a sell transaction"
       - bullets:
           items:
-            - "Enter quantity, ticker, and price per share in your base currency."
-            - "Example: /sell 5 AAPL.US 155"
-            - "This will add a sell of 5 Apple shares at $155 each."
+            - "Enter the number of shares, ticker, and price per share in EUR."
+            - "Try: 5 AAPL.US 155"
+            - "This will record a sell of 5 Apple shares at 155 € each."
 
   # /sell – success message
   sell_success:
@@ -416,7 +419,7 @@ screens:
       - bullets:
           items:
             - "Enter quantity, symbol, and asset class (stock, etf, or crypto)."
-            - "Example: /add 10 AAPL.US stock"
+            - "Try: 10 AAPL stock"
             - "This adds 10 shares of Apple stock to your portfolio."
 
   # /add – success message
@@ -431,7 +434,7 @@ screens:
       - bullets:
           items:
             - "Enter the ticker you want to remove completely."
-            - "Example: /remove AAPL.US"
+            - "Try: AAPL"
             - "This removes all Apple shares from your portfolio."
 
   # /remove – success message
@@ -442,7 +445,19 @@ screens:
   # /remove – not owned
   remove_not_owned:
     blocks:
-      - paragraph: "You do not hold *{symbol}* in this portfolio."
+      - paragraph: "You don't currently hold {symbol} in your portfolio."
+
+  # /remove – confirmation prompt
+  remove_confirm:
+    blocks:
+      - paragraph: "Are you sure you want to remove all {symbol} positions from your portfolio?"
+      - spacer: { lines: 1 }
+      - paragraph: "👉 Reply with Y or N."
+
+  # /remove – cancelled
+  remove_cancelled:
+    blocks:
+      - paragraph: "Got it, no changes made. You still hold {symbol} in your portfolio."
 
   # /po_if – missing args prompt
   po_if_prompt:
@@ -461,35 +476,35 @@ screens:
   # Unknown input & command
   unknown_input:
     blocks:
-      - paragraph: "Hmm, did't catch that. Try /help"
+      - paragraph: "Hmm, did't catch that. Try /help to see what you can do."
 
   unknown_command:
     blocks:
-      - paragraph: "Unknown command: `{cmd}`"
-      - paragraph: "Try /help"
+      - paragraph: "Sorry, I don't recognize the command: {cmd}. Try /help to see what you can do."
 
   # Validation errors for prompts (bad input) and upstream errors
   invalid_template:
     blocks:
-      - paragraph: "Hmm, that didn't look right - {error}"
+      - paragraph: "Hmm, that didn't look right. {error}"
       - paragraph: "Try: {usage}"
-      - paragraph: "Example: {example}"
+      - paragraph: "Try: {example}"
 
   service_error:
     blocks:
       - paragraph: "{message}"
       - paragraph: "Try: {usage}"
-      - paragraph: "Example: {example}"
+      - paragraph: "Try: {example}"
 
   # Shown when the sender is not in ROUTER_OWNER_IDS
   not_authorized:
     blocks:
-      - paragraph: "Not authorized."
+      - paragraph: "⛔ Sorry, this bot is only available to authorized users."
+      - paragraph: "Message me via @h8man if you'd like access."
 
   # Shown after /cancel or /exit
   canceled:
     blocks:
-      - paragraph: "Okay, closed."
+      - paragraph: "👌 All good, catch you later!"
 
   # Generic success fallback (rarely used)
   done:
