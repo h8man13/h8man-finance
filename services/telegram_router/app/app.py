@@ -24,7 +24,7 @@ from .core.idempotency import IdempotencyStore
 from .core.dispatcher import Dispatcher
 from .core.templates import escape_mdv2, paginate, euro, monotable, safe_escape_mdv2_with_fences, convert_markdown_to_html, mdv2_blockquote, mdv2_expandable_blockquote
 from .connectors.http import HTTPClient
-from .ui.loader import load_ui, render_screen
+from .ui.loader import load_ui, load_router_config, render_screen
 
 
 @asynccontextmanager
@@ -190,7 +190,6 @@ def _portfolio_table_pages(ui: Dict[str, Any], portfolio: Dict[str, Any] | None)
     rows: List[List[str]] = [[
         "TICKER",
         "CLASS",
-        "MARKET",
         "QTY",
         "PRICE",
         "TOTAL",
@@ -199,8 +198,10 @@ def _portfolio_table_pages(ui: Dict[str, Any], portfolio: Dict[str, Any] | None)
     holdings_total = Decimal("0")
     for holding in holdings:
         symbol = str(holding.get("symbol") or "").upper()
+        # Remove .US suffix for cleaner visual display
+        display_symbol = symbol.replace(".US", "") if symbol.endswith(".US") else symbol
         display_name = holding.get("display_name")
-        ticker = symbol if not display_name else f"{symbol} ({display_name})"
+        ticker = display_symbol if not display_name else f"{display_symbol} ({display_name})"
         asset_class = (holding.get("asset_class") or "-").lower()
         market = (holding.get("market") or "-").upper()
         qty = _format_quantity(holding.get("qty_total"))
@@ -208,11 +209,11 @@ def _portfolio_table_pages(ui: Dict[str, Any], portfolio: Dict[str, Any] | None)
         value_dec = _to_decimal(holding.get("value_eur"))
         value = _format_eur(value_dec)
         holdings_total += value_dec
-        rows.append([ticker, asset_class, market, qty, price, value])
+        rows.append([ticker, asset_class, qty, price, value])
 
     if cash_dec > 0:
         cash_display = _format_eur(cash_dec)
-        rows.append(["Cash", "cash", "-", "-", cash_display, cash_display])
+        rows.append(["Cash", "cash", "-", cash_display, cash_display])
 
     total_dec = _to_decimal(portfolio.get("total_value_eur"), default=holdings_total + cash_dec)
     data = {"total_value": _format_eur(total_dec), "table_rows": rows}
@@ -333,6 +334,18 @@ async def send_telegram_message(token: str, chat_id: int, text: str, parse_mode:
 # Legacy help builder removed; /help is rendered via UI screens.
 
 
+def get_sticky_commands() -> List[str]:
+    """Get sticky commands from router config, fallback to empty list."""
+    try:
+        config = load_router_config(get_settings().ROUTER_CONFIG_PATH)
+        if config:
+            session_config = config.get("session", {})
+            return session_config.get("sticky_commands", [])
+    except Exception:
+        pass
+    return []
+
+
 async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_context: Dict[str, Any] = None):
     s, registry, sessions, idemp, dispatcher, http = ctx
     ui = load_ui(get_settings().UI_PATH)
@@ -431,8 +444,8 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
 
 
     if missing or (should_prompt_when_empty and user_provided_no_args):
-        # For /price, start a sticky session so user can keep sending symbols
-        sticky = (spec.name == "/price")
+        # Start a sticky session if command is configured as sticky
+        sticky = spec.name in get_sticky_commands()
         sessions.set(chat_id, {
             "chat_id": chat_id,
             "cmd": spec.name,
@@ -446,13 +459,62 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
         # UI generic command prompt mapping: /cmd -> cmd_prompt
         screen_key = spec.name.lstrip("/") + "_prompt"
         ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
-        pages = render_screen(ui, screen_key, {"ttl_min": ttl_min})
+        prompt_data = {"ttl_min": ttl_min}
+
+        # For /allocation_edit, fetch current allocation data to show in prompt
+        if spec.name == "/allocation_edit":
+            try:
+                # Make API call to get current allocation using same pattern as dispatcher
+                user_id = (user_context or {}).get("user_id")
+                if user_id:
+                    import httpx
+                    base = get_settings().PORTFOLIO_CORE_URL.rstrip("/")
+                    url = f"{base}/allocation"
+                    timeout = get_settings().HTTP_TIMEOUT_SEC
+
+                    # Use same params pattern as dispatcher: user_context in query params
+                    params = {k: v for k, v in (user_context or {}).items() if v is not None}
+
+                    # Use sync httpx client with same timeout/retry as main http client
+                    with httpx.Client(timeout=timeout) as client:
+                        resp = client.get(url, params=params)
+                        if resp.status_code == 200:
+                            allocation_data = resp.json().get("data", {})
+                            target = allocation_data.get("target", {})
+                            prompt_data.update({
+                                "stock_target_pct": target.get("stock_pct", 0),
+                                "etf_target_pct": target.get("etf_pct", 0),
+                                "crypto_target_pct": target.get("crypto_pct", 0),
+                            })
+                        else:
+                            # Default values if API call fails
+                            prompt_data.update({
+                                "stock_target_pct": 0,
+                                "etf_target_pct": 0,
+                                "crypto_target_pct": 0,
+                            })
+                else:
+                    # Default values if no user_id
+                    prompt_data.update({
+                        "stock_target_pct": 0,
+                        "etf_target_pct": 0,
+                        "crypto_target_pct": 0,
+                    })
+            except Exception:
+                # Default values if any error occurs
+                prompt_data.update({
+                    "stock_target_pct": 0,
+                    "etf_target_pct": 0,
+                    "crypto_target_pct": 0,
+                })
+
+        pages = render_screen(ui, screen_key, prompt_data)
         return [p for p in pages]
 
     # ready to dispatch
-    # For sticky /price sessions, keep the session alive after each success
+    # For sticky sessions, keep the session alive after each success
     clear_after = True
-    if spec.name == "/price" and existing and existing.get("cmd") == "/price" and existing.get("sticky"):
+    if spec.name in get_sticky_commands() and existing and existing.get("cmd") == spec.name and existing.get("sticky"):
         clear_after = False
     dispatch_values = dispatch_override or values
     if spec.dispatch.get("service") == "portfolio_core":
@@ -485,7 +547,7 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
                     "expected": [],
                     "got": values,
                     "missing_from": [],
-                    "sticky": True,
+                    "sticky": spec.name in get_sticky_commands(),
                     "confirm": {
                         "payload": dict(dispatch_values),
                         "values": dict(values),
@@ -531,7 +593,7 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
                 "expected": [f["name"] for f in spec.args_schema],
                 "got": {},
                 "missing_from": [],
-                "sticky": True,
+                "sticky": spec.name in get_sticky_commands(),
             })
             # Prefer UI screens showing missing symbols when available.
             # For no-quotes responses, treat all requested as missing.
@@ -630,15 +692,9 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
         base_screen = "price_partial_error" if has_missing else "price_partial_note" if partial else "price_result"
         screen = base_screen
         screen_payload = dict(data_ui)
-        if not clear_after:
-            ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
-            screen_payload["ttl_min"] = ttl_min
-            sticky_map = {
-                "price_result": "price_result_sticky",
-                "price_partial_error": "price_partial_error_sticky",
-                "price_partial_note": "price_partial_note_sticky",
-            }
-            screen = sticky_map.get(screen, screen)
+        # Always show helpful hints (always use sticky versions)
+        ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
+        screen_payload["ttl_min"] = ttl_min
         pages = render_screen(ui, screen, screen_payload)
         text = pages[0]
         # Session handling: keep session open for any error cases (partial or missing list)
@@ -649,7 +705,7 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
                 "expected": [f["name"] for f in spec.args_schema],
                 "got": {},
                 "missing_from": [],
-                "sticky": True,
+                "sticky": spec.name in get_sticky_commands(),
             })
         elif not clear_after:
             # Already an interactive session -> refresh TTL
@@ -659,7 +715,7 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
                 "expected": [f["name"] for f in spec.args_schema],
                 "got": {},
                 "missing_from": [],
-                "sticky": True,
+                "sticky": spec.name in get_sticky_commands(),
             })
         else:
             sessions.clear(chat_id)
@@ -688,17 +744,26 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
         data = resp.get("data", {})
         # Prompt flow when no args provided
         if data.get("fx_prompt"):
-            # Open a sticky session to accept base/quote next
+            # Open a session to accept base/quote next (sticky if configured)
+            sticky = spec.name in get_sticky_commands()
             sessions.set(chat_id, {
                 "chat_id": chat_id,
                 "cmd": "/fx",
                 "expected": [f["name"] for f in spec.args_schema],
                 "got": {},
                 "missing_from": [],
-                "sticky": True,
+                "sticky": sticky,
             })
-            pages = render_screen(ui, "fx_prompt", {})
+            ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
+            pages = render_screen(ui, "fx_prompt", {"ttl_min": ttl_min})
             return [p for p in pages]
+
+        # Check for existing session to determine sticky behavior
+        existing = sessions.get(chat_id)
+        clear_after = True
+        if spec.name in get_sticky_commands() and existing and existing.get("cmd") == spec.name and existing.get("sticky"):
+            clear_after = False
+
         rate = data.get("rate") or data.get("close") or data.get("price")
         pair = (str(data.get("pair")) or "").upper()
         # fx upstream returns pair sometimes; keep inputs for clarity
@@ -709,6 +774,7 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
             if len(parts) == 2:
                 base = base or parts[0]
                 quote = quote or parts[1]
+
         # Invert if user requested EUR/USD but upstream pair is USD_EUR
         rate_disp = rate
         try:
@@ -717,15 +783,34 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
             rnum = None
         if pair == "USD_EUR" and base == "EUR" and quote == "USD" and rnum and rnum != 0.0:
             rate_disp = 1.0 / rnum
-        # Clear session after success
-        sessions.clear(chat_id)
+
         # Display: round to 4 decimals for communication purposes,
         # but leave upstream data untouched for any calculations elsewhere.
         try:
             rate_str = f"{float(rate_disp):.4f}"
         except Exception:
             rate_str = str(rate_disp)
-        pages = render_screen(ui, "fx_result", {"base": base or "?", "quote": quote or "?", "rate": rate_str})
+
+        # Always show helpful hints
+        ttl_min = int(get_settings().ROUTER_SESSION_TTL_SEC // 60)
+        pages = render_screen(ui, "fx_result", {"base": base or "?", "quote": quote or "?", "rate": rate_str, "ttl_min": ttl_min})
+
+        # Session handling: same logic as other sticky commands
+        if not clear_after:
+            # Already an interactive session -> refresh TTL
+            sticky = spec.name in get_sticky_commands()
+            sessions.set(chat_id, {
+                "chat_id": chat_id,
+                "cmd": "/fx",
+                "expected": [f["name"] for f in spec.args_schema],
+                "got": {},
+                "missing_from": [],
+                "sticky": sticky,
+            })
+        else:
+            # Fresh command -> clear session after success
+            sessions.clear(chat_id)
+
         return [p for p in pages]
     # Portfolio command success screens
     if spec.name in ("/buy", "/sell"):
@@ -749,7 +834,13 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
         sessions.clear(chat_id)
         return [p for p in pages]
     elif spec.name == "/allocation_edit":
-        pages = render_screen(ui, "allocation_edit_success", values)
+        # Map user input to UI field names (fallback when API fails)
+        success_data = {
+            "stock_target_pct": values.get("stock_pct", 0),
+            "etf_target_pct": values.get("etf_pct", 0),
+            "crypto_target_pct": values.get("crypto_pct", 0),
+        }
+        pages = render_screen(ui, "allocation_edit_success", success_data)
         sessions.clear(chat_id)
         return [p for p in pages]
     elif spec.name == "/rename":
@@ -852,12 +943,16 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
 
     elif spec.name == "/allocation_edit":
         allocation = resp.get("data", {}) or {}
-        rows = _allocation_rows([
-            ("Previous", allocation.get("previous")),
-            ("Current", allocation.get("current")),
-            ("Target", allocation.get("target")),
-        ])
-        pages = render_screen(ui, "allocation_edit_success", {"table_rows": rows})
+
+        # Extract target values from API response (best practice: use saved values)
+        target = allocation.get("target", {})
+        success_data = {
+            "stock_target_pct": target.get("stock_pct", values.get("stock_pct", 0)),
+            "etf_target_pct": target.get("etf_pct", values.get("etf_pct", 0)),
+            "crypto_target_pct": target.get("crypto_pct", values.get("crypto_pct", 0)),
+        }
+
+        pages = render_screen(ui, "allocation_edit_success", success_data)
         sessions.clear(chat_id)
         return [p for p in pages] if pages else []
 

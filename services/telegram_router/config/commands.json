@@ -60,7 +60,7 @@
     {
       "name": "/fx",
       "aliases": [],
-      "description": "Latest FX conversion rate",
+      "description": "Latest FX conversion rates for 1..10 currency pairs",
       "args_schema": [
         {
           "name": "base",

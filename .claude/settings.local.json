@@ -34,7 +34,8 @@
       "Bash(timeout 120 docker-compose exec portfolio_core python -c \"import tests.test_api; print(''File loads correctly'')\")",
       "Bash(timeout:*)",
       "Bash(cat:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(tree:*)"
     ],
     "deny": [],
     "ask": []

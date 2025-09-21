@@ -10,7 +10,7 @@
 # Price flow (what renders when)
 # - price_prompt: shown when /price is issued without tickers (first prompt),
 #   or when no quotes returned AND there are no missing tickers to list.
-#   
+#
 # - price_result: shown when quotes are returned and the result is NOT partial.
 # - price_partial_error: shown when quotes are returned AND some tickers could
 #   not be found (partial with explicit bullet list).
@@ -30,15 +30,24 @@
 # - *_prompt: per-command prompts for missing args
 ###############################################
 snippets:
-  symbol_error: 
-    - paragraph: "⚠️ Some tickers couldn't be found. See the list below, then fix them or send new ones without rerunning /price."
-    
+  symbol_error:
+    - paragraph: "⚠️ Unfortunately, I couldn't find quotes for some of the tickers you requested. Please check the list below and update them, or send new ones without rerunning /price."
+
   session_hint:
     - bullets:
           items:
-            - "You can keep sending tickers without rerunning /price. Session auto-closes after {ttl_min} minutes or when you send another command."
-            - "Freshness shows how current the price is: L = Live, P = Prev close, E = End-of-day, D = Delayed, or a 3-letter code or n/a."
+            - "You can keep sending tickers without rerunning /price. Session ends after {ttl_min} minutes or when you switch commands."
+            - "Age shows how current the price is: L = Live, P = Prev close, E = End-of-day, D = Delayed, or a 3-letter code or n/a."
             - "Requesting .US from Europe may only return live prices during US market hours. This is a limitation of the data provider."
+
+  fx_session_hint:
+    - bullets:
+          items:
+            - "You can keep sending currency pairs without rerunning /fx. Session ends after {ttl_min} minutes or when you switch commands."
+            - "Rates update live during trading hours."
+
+  fx_pair_error:
+    - paragraph: "⚠️ Unfortunately, I couldn't find quotes for some of the currency pairs you requested. Please check the list below and update them, or send new ones without rerunning /fx."
 
 screens:
   # /help - help landing
@@ -66,15 +75,23 @@ screens:
             - "/rename - assign or update a nickname for a symbol"
             - "/tx - show last transactions"
             - "/cash - current available cash balance"
-            - "/cash_add - add or remove cash balance manually"
+            - "/cash_add - add cash balance manually"
+            - "/cash_remove - remove cash balance"
       - spacer: { lines: 1 }
       - subheader: "Trading"
       - bullets:
           items:
-            - "/buy - record a buy transaction"
-            - "/sell - record a sell transaction"
+            - "/buy or /b - record a buy transaction"
+            - "/sell or /s - record a sell transaction"
             - "/add - add or increase a position"
             - "/remove - remove a position fully"
+            - "/po_if - what-if analysis for price movements"
+            - "/cancel - cancel current session"
+            - "/exit - exit current conversation"
+
+  # ===================
+  # MARKET COMMANDS
+  # ===================
 
   # /price - first prompt (missing args), or no quotes and no missing list
   price_prompt:
@@ -83,7 +100,7 @@ screens:
       - bullets:
           items:
             - "Enter 1 to 10 tickers, separated by spaces."
-            - "Example: /price NVDA GOOG ZAL.DE"
+            - "For example, enter: NVDA AAPL"
             - "Tickers default to .US (e.g. NVDA). For other markets, add a suffix like TSLA.XETRA to ensure correct currency conversion."
             - "Session auto-closes after {ttl_min} minutes or when you send another command."
 
@@ -92,12 +109,7 @@ screens:
     blocks:
       - table:
           rows: "{table_rows}"
-      - paragraph: "?? Keep in mind:"
-  price_result_sticky:
-    blocks:
-      - table:
-          rows: "{table_rows}"
-      - paragraph: "?? Keep in mind:"
+      - paragraph: "💡 Keep in mind:"
       - include: session_hint
 
   # /price - quotes returned & partial with explicit missing list
@@ -106,156 +118,81 @@ screens:
       - table:
           rows: "{table_rows}"
       - include: symbol_error
+      - spacer: { lines: 1 }
       - bullets:
           items: "{not_found_symbols}"
-  
-  price_partial_error_sticky:
-    blocks:
-      - table:
-          rows: "{table_rows}"
-      - include: symbol_error
-      - bullets:
-          items: "{not_found_symbols}"
-      - include: session_hint
 
   # /price - quotes returned & partial without a list; show short note
   price_partial_note:
     blocks:
       - table:
           rows: "{table_rows}"
-      - include: symbol_error
-  price_partial_note_sticky:
-    blocks:
-      - table:
-          rows: "{table_rows}"
-      - include: symbol_error
-      - include: session_hint
-
+      - paragraph: "⚠️ Unfortunately, I couldn't find any valid quotes for a few of the tickers you requested. This may happen if the tickers are incorrect or not supported."
+  
   # /price - no quotes and some tickers missing (minimal missing list)
   price_not_found:
     blocks:
       - include: symbol_error
+      - spacer: { lines: 1 }
       - bullets:
-          items: "{not_found_symbols}"   
+          items: "{not_found_symbols}"
 
-  # Unknown input & command
-  unknown_input:
-    blocks:
-      - paragraph: "Did't catch that. Try /help"
-
-  unknown_command:
-    blocks:
-      - paragraph: "Unknown command: `{cmd}`"
-      - paragraph: "Try /help"
-
-  # Validation errors for prompts (bad input) and upstream errors
-  invalid_template:
-    blocks:
-      - paragraph: "Hmm, that didn't look right - {error}"
-      - paragraph: "Try: {usage}"
-      - paragraph: "Example: {example}"
-
-  service_error:
-    blocks:
-      - paragraph: "{message}"
-      - paragraph: "Try: {usage}"
-      - paragraph: "Example: {example}"
-
-  # /fx – shown when user provides no args (base/quote). Session stays open to accept the next message.
+  # /fx – shown when user provides no args. Session stays open to accept the next message.
   fx_prompt:
     blocks:
       - header: "Check a currency pair"
       - bullets:
           items:
-            - "Enter a base and quote currency, separated by space."
-            - "Example: /fx USD EUR"
-            - "Live rate is shown rounded to 4 decimals."
+            - "Enter a pair with 3-letter codes, separated by a space."
+            - "For example, enter: USD EUR"
+            - "Session auto-closes after {ttl_min} minutes or when you send another command."
+
   # /fx – success result for any pair BASE/QUOTE
   fx_result:
     blocks:
-      - paragraph: "{base}/{quote}: {rate}"
-      
+      - paragraph: "{base} → {quote}: {rate}"
+      - spacer: { lines: 1 }
+      - paragraph: "💡 Keep in mind:"
+      - include: fx_session_hint
+
   # FX-specific errors (e.g., unsupported pair or upstream failure)
   fx_error:
     blocks:
-      - paragraph: "This may happen if the pair isn't supported or the market is unavailable."
+      - paragraph: "⚠️ Unfortunately, I couldn't fetch a valid rate for {base} → {quote}. This may happen if the pair isn't supported or the market is unavailable."
+      - spacer: { lines: 1 }
+      - paragraph: "Try: /fx USD EUR"
 
-      - paragraph: "Example: {example}"
+  # ===================
+  # PORTFOLIO COMMANDS
+  # ===================
 
-  # Shown when the sender is not in ROUTER_OWNER_IDS
-  not_authorized:
+  # /portfolio – empty portfolio guidance for new users
+  portfolio_empty:
     blocks:
-      - paragraph: "Not authorized."
-
-  # Shown after /cancel or /exit
-  canceled:
-    blocks:
-      - paragraph: "Okay, closed."
-
-  # Generic success fallback (rarely used)
-  done:
-    blocks:
-      - paragraph: "✅ Done"
-
-  # /buy – missing args prompt
-  buy_prompt:
-    blocks:
-      - header: "Record a buy transaction"
+      - header: "Your portfolio is empty"
+      - paragraph: "Get started by adding some positions or cash to track your investments."
+      - spacer: { lines: 1 }
+      - paragraph: "💡 Quick start options:"
       - bullets:
           items:
-            - "Enter quantity, ticker, and price per share in your base currency."
-            - "Example: /buy 10 AAPL.US 150"
-            - "This will record a buy of 5 Apple shares at $155 each."
+            - "Add cash: /cash_add 1000 (adds €1,000 to your balance)"
+            - "Add a position: /add 10 AAPL.US (adds 10 Apple shares to your portfolio)"
+            - "Buy shares: /buy 5 MSFT 300 (records 5 Microsoft shares at €300€ each)"
+      - spacer: { lines: 1 }
+      - paragraph: "Once you have some positions, use /portfolio to see a snapshot of your holdings."
 
-  # /sell – missing args prompt
-  sell_prompt:
+  # /portfolio – portfolio result with positions table
+  portfolio_result:
     blocks:
-      - header: "Record a sell transaction"
+      - header: "💰 Total Portfolio Value: {total_value}"
+      - spacer: { lines: 1 }
+      - table:
+          rows: "{table_rows}"
       - bullets:
           items:
-            - "Enter quantity, ticker, and price per share in your base currency."
-            - "Example: /sell 5 AAPL.US 155"
-            - "This will add a sell of 5 Apple shares at $155 each."
-
-  # /add – missing args prompt
-  add_prompt:
-    blocks:
-      - header: "Add a new position to your portfolio"
-      - bullets:
-          items:
-            - "Enter quantity, symbol, and asset class (stock, etf, or crypto)."
-            - "Example: /add 10 AAPL.US stock"
-            - "This adds 10 shares of Apple stock to your portfolio."
-
-  # /remove – missing args prompt
-  remove_prompt:
-    blocks:
-      - header: "Remove a position from your portfolio"
-      - bullets:
-          items:
-            - "Enter the ticker you want to remove completely."
-            - "Example: /remove AAPL.US"
-            - "This removes all Apple shares from your portfolio."
-
-  # /cash_add – missing args prompt
-  cash_add_prompt:
-    blocks:
-      - header: "Add cash to your portfolio"
-      - bullets:
-          items:
-            - "Enter the amount in EUR"
-            - "Example: /cash_add 1000"
-            - "This adds 1,000€ to your available cash balance."
-
-  # /tx – optional args prompt
-  tx_prompt:
-    blocks:
-      - header: "View your recent transactions"
-      - bullets:
-          items:
-            - "Enter how many transactions to show (1-50)."
-            - "Example: /tx 10"
-            - "Leave empty to see the last 10 transactions."
+            - "Values are shown in EUR and may differ slightly from your broker."
+            - "Quotes refresh live during trading hours."
+            - "Cash is included in the total value if available."    
 
   # /portfolio_snapshot – optional args prompt
   portfolio_snapshot_prompt:
@@ -307,25 +244,46 @@ screens:
             - "Example: /portfolio_movers d"
             - "Leave empty for daily movers."
 
+  # /allocation – allocation comparison result
+  allocation_result:
+    blocks:
+      - table:
+          rows: "{table_rows}"
+      - paragraph: "💡 Keep in mind:"
+      - bullets:
+          items:
+            - "Rebalancing is recommended quarterly or when gaps exceed 5%."
+            - "Overconcentration in a single asset or sector increases risk."
+            - "Use /allocation_edit to update your targets anytime." 
+
   # /allocation_edit – missing args prompt
   allocation_edit_prompt:
     blocks:
       - header: "Set your target allocation percentages"
+      - spacer: { lines: 1 }
+      - paragraph: "Your current set targets:"
       - bullets:
           items:
-            - "Enter Stock%, ETF%, and Crypto% (must add up to 100)."
-            - "Example: /allocation_edit 30 60 10"
-            - "This sets 30% stocks, 60% ETFs, 10% crypto."
+            - "Stocks: {stock_target_pct}%"
+            - "ETFs: {etf_target_pct}%"
+            - "Crypto: {crypto_target_pct}%"
+      - spacer: { lines: 1 }
+      - bullets:
+          items:
+            - "Update by entering Stock %, ETF %, and Crypto % (total must be 100)."
+            - "For example: /allocation_edit 30 60 10"
 
-  # /po_if – missing args prompt
-  po_if_prompt:
+  # /allocation_edit – success message
+  allocation_edit_success:
     blocks:
-      - header: "What-if analysis for price movements"
+      - header: "✅ Allocation targets updated."
+      - spacer: { lines: 1 }
+      - paragraph: "Your new targets:"
       - bullets:
           items:
-            - "Enter a symbol or category and percentage change."
-            - "Example: /po_if AAPL.US +5%"
-            - "Use stocks, etf, or crypto for entire categories."
+            - "Stocks: {stock_target_pct}%"
+            - "ETFs: {etf_target_pct}%"
+            - "Crypto: {crypto_target_pct}%"
 
   # /rename – missing args prompt
   rename_prompt:
@@ -337,101 +295,20 @@ screens:
             - "Example: /rename AAPL.US Apple Inc"
             - "Nicknames help you identify holdings more easily."
 
-  # /buy – success message
-  buy_success:
-    blocks:
-      - paragraph: "buy: *{symbol}* ×{qty} @ {price_ccy}"
-
-  # /sell – success message
-  sell_success:
-    blocks:
-      - paragraph: "sell: *{symbol}* ×{qty} @ {price_ccy}"
-
-  # /add – success message
-  add_success:
-    blocks:
-      - paragraph: "✅ Added {qty} shares of *{symbol}* to your portfolio"
-
-  # /remove – success message
-  remove_success:
-    blocks:
-      - paragraph: "✅ Removed all *{symbol}* positions from your portfolio"
-
-  # /remove – not owned
-  remove_not_owned:
-    blocks:
-      - paragraph: "You do not hold *{symbol}* in this portfolio."
-
-  # /cash_add – success message
-  cash_add_success:
-    blocks:
-      - paragraph: "✅ Updated cash balance by {amount_display}"
-  cash_remove_prompt:
-      blocks:
-        - header: Remove cash from your account
-        - bullets:
-            items:
-            - Enter the amount to remove in EUR.
-            - "Example: /cash_remove 500"
-            - Reply with Y to confirm or N to cancel.
-  cash_remove_confirm:
-      blocks:
-        - paragraph: "Remove {amount_display} from cash balance?"
-        - paragraph: "Reply with Y or N."
-  cash_remove_success:
-      blocks:
-        - paragraph: "✅ Removed {amount_display} from cash balance"
-  cash_remove_cancelled:
-      blocks:
-        - paragraph: "Cash removal cancelled. {amount_display} remains in cash."
-  cash_zero:
-      blocks:
-        - paragraph: "Cash balance: €0.00"
-        - bullets:
-            items:
-            - "Add funds with /cash_add 1000."
-
-
-  # /allocation_edit – success message
-  allocation_edit_success:
-    blocks:
-      - paragraph: "✅ Allocation targets updated"
-      - table:
-          rows: "{table_rows}"
-
-
   # /rename – success message
   rename_success:
     blocks:
-      - paragraph: "✅ Renamed *{symbol}* to {nickname}"
+      - paragraph: "✅ Renamed {symbol} to {nickname}"
 
-  # /portfolio – empty portfolio guidance for new users
-  portfolio_empty:
+  # /tx – optional args prompt
+  tx_prompt:
     blocks:
-      - header: "Your portfolio is empty"
-      - paragraph: "Get started by adding some positions or cash to track your investments."
-      - spacer: { lines: 1 }
-      - subheader: "Quick start options:"
+      - header: "View your recent transactions"
       - bullets:
           items:
-            - "Add cash: `/cash_add 1000` (adds €1,000)"
-            - "Add a position: `/add 10 AAPL.US stock` (adds 10 Apple shares)"
-            - "Record a purchase: `/buy 5 MSFT.US 300` (buys 5 Microsoft at $300)"
-      - spacer: { lines: 1 }
-      - paragraph: "Once you have some positions, use `/portfolio` to see your holdings and performance."
-
-  # /portfolio – portfolio result with positions table
-  portfolio_result:
-    blocks:
-      - paragraph: "*Total Portfolio Value: {total_value}*"
-      - spacer: { lines: 1 }
-      - table:
-          rows: "{table_rows}"
-
-  # /cash – cash balance result
-  cash_result:
-    blocks:
-      - paragraph: "Cash balance: {cash_balance}"
+            - "Enter how many transactions to show (1-50)."
+            - "Example: /tx 10"
+            - "Leave empty to see the last 10 transactions."
 
   # /tx – transaction history result
   tx_result:
@@ -441,7 +318,6 @@ screens:
       - table:
           rows: "{table_rows}"
 
-  # /allocation – allocation comparison result
   tx_empty:
     blocks:
       - paragraph: "No transactions yet."
@@ -450,10 +326,173 @@ screens:
           - "Add holdings with /add or record trades with /buy and /sell."
           - "Add cash with /cash_add 1000."
 
-  allocation_result:
+  # /cash – cash balance result
+  cash_result:
     blocks:
-      - table:
-          rows: "{table_rows}"
+      - paragraph: "Cash balance: {cash_balance}"
 
+  cash_zero:
+      blocks:
+        - paragraph: "Cash balance: 0.00€"
+        - bullets:
+            items:
+            - "Add funds with /cash_add 1000."
 
+  # /cash_add – missing args prompt
+  cash_add_prompt:
+    blocks:
+      - header: "Add cash to your portfolio"
+      - bullets:
+          items:
+            - "Enter the amount in EUR"
+            - "Example: /cash_add 1000"
+            - "This adds 1,000€ to your available cash balance."
+
+  # /cash_add – success message
+  cash_add_success:
+    blocks:
+      - paragraph: "✅ Updated cash balance by {amount_display}"
+
+  cash_remove_prompt:
+      blocks:
+        - header: Remove cash from your account
+        - bullets:
+            items:
+            - "Enter the amount to remove in EUR."
+            - "Example: /cash_remove 500"
+            - "Reply with Y to confirm or N to cancel."
+
+  cash_remove_confirm:
+      blocks:
+        - paragraph: "Remove {amount_display} from cash balance?"
+        - paragraph: "Reply with Y or N."
+
+  cash_remove_success:
+      blocks:
+        - paragraph: "✅ Removed {amount_display} from cash balance"
+
+  cash_remove_cancelled:
+      blocks:
+        - paragraph: "Cash removal cancelled. {amount_display} remains in cash."
+
+  # ===================
+  # TRADING COMMANDS
+  # ===================
+
+  # /buy – missing args prompt
+  buy_prompt:
+    blocks:
+      - header: "Record a buy transaction"
+      - bullets:
+          items:
+            - "Enter quantity, ticker, and price per share in your base currency."
+            - "Example: /buy 10 AAPL 150"
+            - "This will record a buy of 10 Apple shares at 150€ each."
+
+  # /buy – success message
+  buy_success:
+    blocks:
+      - paragraph: "✅ Buy transaction recorded: {symbol} ×{qty} @ {price_ccy}"
+
+  # /sell – missing args prompt
+  sell_prompt:
+    blocks:
+      - header: "Record a sell transaction"
+      - bullets:
+          items:
+            - "Enter quantity, ticker, and price per share in your base currency."
+            - "Example: /sell 5 AAPL.US 155"
+            - "This will add a sell of 5 Apple shares at $155 each."
+
+  # /sell – success message
+  sell_success:
+    blocks:
+      - paragraph: "✅ Sell transaction recorded: {symbol} ×{qty} @ {price_ccy}"
+
+  # /add – missing args prompt
+  add_prompt:
+    blocks:
+      - header: "Add a new position to your portfolio"
+      - bullets:
+          items:
+            - "Enter quantity, symbol, and asset class (stock, etf, or crypto)."
+            - "Example: /add 10 AAPL.US stock"
+            - "This adds 10 shares of Apple stock to your portfolio."
+
+  # /add – success message
+  add_success:
+    blocks:
+      - paragraph: "✅ Added {qty} shares of {symbol} to your portfolio."
+
+  # /remove – missing args prompt
+  remove_prompt:
+    blocks:
+      - header: "Remove a position from your portfolio"
+      - bullets:
+          items:
+            - "Enter the ticker you want to remove completely."
+            - "Example: /remove AAPL.US"
+            - "This removes all Apple shares from your portfolio."
+
+  # /remove – success message
+  remove_success:
+    blocks:
+      - paragraph: "✅ Removed all {symbol} positions from your portfolio."
+
+  # /remove – not owned
+  remove_not_owned:
+    blocks:
+      - paragraph: "You do not hold *{symbol}* in this portfolio."
+
+  # /po_if – missing args prompt
+  po_if_prompt:
+    blocks:
+      - header: "What-if analysis for price movements"
+      - bullets:
+          items:
+            - "Enter a symbol or category and percentage change."
+            - "Example: /po_if AAPL.US +5%"
+            - "Use stocks, etf, or crypto for entire categories."
+
+  # ===================
+  # SYSTEM MESSAGES
+  # ===================
+
+  # Unknown input & command
+  unknown_input:
+    blocks:
+      - paragraph: "Hmm, did't catch that. Try /help"
+
+  unknown_command:
+    blocks:
+      - paragraph: "Unknown command: `{cmd}`"
+      - paragraph: "Try /help"
+
+  # Validation errors for prompts (bad input) and upstream errors
+  invalid_template:
+    blocks:
+      - paragraph: "Hmm, that didn't look right - {error}"
+      - paragraph: "Try: {usage}"
+      - paragraph: "Example: {example}"
+
+  service_error:
+    blocks:
+      - paragraph: "{message}"
+      - paragraph: "Try: {usage}"
+      - paragraph: "Example: {example}"
+
+  # Shown when the sender is not in ROUTER_OWNER_IDS
+  not_authorized:
+    blocks:
+      - paragraph: "Not authorized."
+
+  # Shown after /cancel or /exit
+  canceled:
+    blocks:
+      - paragraph: "Okay, closed."
+
+  # Generic success fallback (rarely used)
+  done:
+    blocks:
+      - paragraph: "✅ Done"
 

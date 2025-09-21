@@ -10,7 +10,7 @@ benchmarks:
 # Session settings
 session:
   ttl_minutes: 5
-  sticky_commands: ["/price"]
+  sticky_commands: ["/price", "/fx"]
 
 # Table formatting
 table:

@@ -22,6 +22,20 @@ def load_ui(path: str) -> Dict[str, Any] | None:
         return None
 
 
+@lru_cache(maxsize=1)
+def load_router_config(path: str) -> Dict[str, Any] | None:
+    p = (path or "").strip()
+    if not p:
+        return None
+    if not os.path.exists(p):
+        return None
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    except Exception:
+        return None
+
+
 def _expand_includes(blocks: List[Dict[str, Any]], ui: Dict[str, Any]) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     snippets = (ui or {}).get("snippets", {}) or {}
