@@ -414,7 +414,11 @@ class PortfolioService:
             amount = (price * qty).quantize(Decimal("0.01"))
             total_cost = (amount + fees).quantize(Decimal("0.01"))
             if current_cash < total_cost:
-                raise BusinessError(ErrorCode.INSUFFICIENT, "Not enough cash to buy")
+                raise BusinessError(
+                    ErrorCode.INSUFFICIENT,
+                    "Not enough cash to buy",
+                    details={"current_balance": str(current_cash)}
+                )
             new_qty = old_qty + qty
             new_avg = ((old_qty * old_avg) + amount) / new_qty if new_qty > 0 else price
             await self.repo.upsert_position(

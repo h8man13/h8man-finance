@@ -145,6 +145,7 @@ def allocation_rows(entries: List[Tuple[str, Dict[str, Any]]], formatter: Format
     return rows
 
 
+
 def allocation_table_pages(
     ui: Dict[str, Any],
     formatter: FormattingService,
@@ -152,10 +153,17 @@ def allocation_table_pages(
 ) -> List[str]:
     if not ui or not entries:
         return []
-    rows = allocation_rows(list(entries), formatter)
+    entry_list = list(entries)
+    has_allocation_data = any(
+        isinstance(payload, dict) and any(value is not None for value in payload.values())
+        for _, payload in entry_list
+    )
+    if not has_allocation_data:
+        fallback = render_screen(ui, "allocation_empty", {})
+        return [p for p in fallback] if fallback else []
+    rows = allocation_rows(entry_list, formatter)
     pages = render_screen(ui, "allocation_result", {"table_rows": rows})
     return [p for p in pages] if pages else []
-
 
 def analytic_json_pages(ui: Dict[str, Any], resp: Dict[str, Any]) -> List[str]:
     data = resp.get("data", {})
@@ -165,3 +173,4 @@ def analytic_json_pages(ui: Dict[str, Any], resp: Dict[str, Any]) -> List[str]:
         formatted = json.dumps(data, indent=2, ensure_ascii=False)
         return [f"```json\n{formatted}\n```"]
     return ["No data available"]
+

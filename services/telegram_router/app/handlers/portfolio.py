@@ -118,14 +118,25 @@ class PortfolioHandler(BaseHandler):
         *,
         chat_id: int,
         values: Dict[str, Any],
+        resp: Dict[str, Any],
     ) -> List[str]:
         formatter = self.formatting
-        ui_values = dict(values)
-        if formatter and values.get("amount_eur") is not None:
-            ui_values["amount"] = formatter.format_eur(values.get("amount_eur"))
-        pages = self.render_response("cash_add_success", ui_values)
+        amount_value = values.get("amount_eur")
+        data = resp.get("data", {}) if isinstance(resp, dict) else {}
+        new_balance_value = data.get("cash_eur")
+        if formatter:
+            amount_display = formatter.format_eur(amount_value)
+            new_balance_display = formatter.format_eur(new_balance_value) if new_balance_value is not None else None
+        else:
+            amount_display = str(amount_value) if amount_value is not None else "0"
+            new_balance_display = str(new_balance_value) if new_balance_value is not None else None
+        if not new_balance_display:
+            new_balance_display = "n/a"
+        payload = {"amount_display": amount_display, "new_balance": new_balance_display}
+        success_pages = self.render_response("cash_add_success", payload) or []
+        snapshot_pages = self._snapshot_builder(self.ui, data) or []
         self.clear_session(chat_id)
-        return pages
+        return success_pages + snapshot_pages
 
     async def handle_cash_remove(
         self,
@@ -135,9 +146,20 @@ class PortfolioHandler(BaseHandler):
         resp: Dict[str, Any],
     ) -> List[str]:
         formatter = self.formatting
-        amount_display = formatter.format_eur(values.get("amount_eur")) if formatter else str(values.get("amount_eur"))
-        success_pages = self.render_response("cash_remove_success", {"amount_display": amount_display}) or []
-        snapshot_pages = self._snapshot_builder(self.ui, resp.get("data", {})) or []
+        amount_value = values.get("amount_eur")
+        data = resp.get("data", {}) if isinstance(resp, dict) else {}
+        new_balance_value = data.get("cash_eur")
+        if formatter:
+            amount_display = formatter.format_eur(amount_value)
+            new_balance_display = formatter.format_eur(new_balance_value) if new_balance_value is not None else None
+        else:
+            amount_display = str(amount_value) if amount_value is not None else "0"
+            new_balance_display = str(new_balance_value) if new_balance_value is not None else None
+        if not new_balance_display:
+            new_balance_display = "n/a"
+        payload = {"amount_display": amount_display, "new_balance": new_balance_display}
+        success_pages = self.render_response("cash_remove_success", payload) or []
+        snapshot_pages = self._snapshot_builder(self.ui, data) or []
         self.clear_session(chat_id)
         return success_pages + snapshot_pages
 
@@ -301,11 +323,15 @@ class PortfolioHandler(BaseHandler):
         resp: Dict[str, Any],
     ) -> List[str]:
         allocation = resp.get("data", {}) or {}
-        return self._allocation_builder(
+        pages = self._allocation_builder(
             self.ui,
             ("Current", allocation.get("current")),
             ("Target", allocation.get("target")),
         )
+        if pages:
+            return pages
+        fallback_pages = self.render_response("allocation_empty", {})
+        return fallback_pages or []
 
     async def handle_allocation_edit(
         self,
@@ -339,5 +365,4 @@ class PortfolioHandler(BaseHandler):
         pages = self.render_response("rename_success", {"symbol": symbol, "nickname": nickname})
         self.clear_session(chat_id)
         return pages
-
 

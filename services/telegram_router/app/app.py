@@ -241,14 +241,17 @@ def build_success_handlers(
         "/buy": lambda: trading_handler.handle_buy(
             chat_id=chat_id,
             values=values,
+            resp=resp,
         ),
         "/sell": lambda: trading_handler.handle_sell(
             chat_id=chat_id,
             values=values,
+            resp=resp,
         ),
         "/cash_add": lambda: portfolio_handler.handle_cash_add(
             chat_id=chat_id,
             values=values,
+            resp=resp,
         ),
         "/cash_remove": lambda: portfolio_handler.handle_cash_remove(
             chat_id=chat_id,
@@ -358,7 +361,7 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
         formatting_service=formatting_service,
     )
     portfolio_snapshot_builder = partial(portfolio_pages_with_fallback, formatter=formatting_service)
-    allocation_builder = partial(allocation_table_pages, formatter=formatting_service)
+    allocation_builder = lambda ui, *entries: allocation_table_pages(ui, formatting_service, *entries)
     portfolio_handler = PortfolioHandler(
         ui,
         session_service,
@@ -617,7 +620,56 @@ async def process_text(chat_id: int, sender_id: int, text: str, ctx, user_contex
             pages = render_screen(ui, "remove_not_owned", {"symbol": symbol})
             session_service.clear(chat_id)
             return [p for p in pages] if pages else []
-        if spec.name == "/cash_remove":
+        if spec.name == "/rename" and code == "NOT_FOUND":
+            symbol = (values.get("symbol") or "").upper()
+            usage_text = usage or "[symbol] [nickname]"
+            example_text = example or "AAPL.US 'Apple Inc'"
+            payload = {"symbol": symbol, "usage": usage_text, "example": example_text}
+            pages = render_screen(ui, "rename_error", payload)
+            session_service.clear(chat_id)
+            return [p for p in pages] if pages else []
+        if spec.name == "/buy" and code == "INSUFFICIENT":
+            details = err.get("details") if isinstance(err, dict) else {}
+            current_balance_raw = details.get("current_balance") if isinstance(details, dict) else None
+            if formatting_service:
+                current_balance = formatting_service.format_eur(current_balance_raw)
+            else:
+                current_balance = str(current_balance_raw) if current_balance_raw is not None else "0"
+            payload = {"current_balance": current_balance, "usage": usage, "example": example}
+            pages = render_screen(ui, "buy_insufficient_cash", payload)
+            session_service.clear(chat_id)
+            return [p for p in pages] if pages else []
+        if spec.name == "/sell" and code == "INSUFFICIENT":
+            details = err.get("details") if isinstance(err, dict) else {}
+            available_raw = details.get("available_qty") if isinstance(details, dict) else None
+            if formatting_service:
+                available_qty = formatting_service.format_quantity(available_raw)
+            else:
+                available_qty = str(available_raw) if available_raw is not None else "0"
+            payload = {"available_qty": available_qty, "usage": usage, "example": example}
+            pages = render_screen(ui, "sell_insufficient_holdings", payload)
+            session_service.clear(chat_id)
+            return [p for p in pages] if pages else []
+        if spec.name == "/cash_remove" and code == "INSUFFICIENT":
+            amount_value = values.get("amount_eur")
+            details = err.get("details") if isinstance(err, dict) else {}
+            current_balance_value = details.get("current_balance") if isinstance(details, dict) else None
+            if formatting_service:
+                amount_display = formatting_service.format_eur(amount_value)
+                current_balance_display = formatting_service.format_eur(current_balance_value)
+            else:
+                amount_display = str(amount_value) if amount_value is not None else "0"
+                current_balance_display = str(current_balance_value) if current_balance_value is not None else "0"
+            payload = {
+                "amount_display": amount_display,
+                "current_balance": current_balance_display,
+                "usage": usage,
+                "example": example,
+            }
+            pages = render_screen(ui, "cash_remove_insufficient", payload)
+            session_service.clear(chat_id)
+            return [p for p in pages] if pages else []
+
             session_service.clear(chat_id)
         if spec.name == "/remove":
             session_service.clear(chat_id)
@@ -744,3 +796,7 @@ async def telegram_test(body: TestRouteIn):
         for chunk in paginate(r):
             await send_telegram_message(s.TELEGRAM_BOT_TOKEN, chat_id, chunk, s.REPLY_PARSE_MODE)
     return {"ok": True}
+
+
+
+

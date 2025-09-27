@@ -31,7 +31,7 @@
 ###############################################
 snippets:
   symbol_error:
-    - paragraph: "⚠️ Unfortunately, I couldn't find quotes for some of the tickers you requested. Please check the list below and update them, or send new ones without rerunning /price."
+    - paragraph: "⚠️ Some tickers not found. Update or send new ones without rerunning /price."
   
   session_hint_header:
     - paragraph: "💡 Keep in mind:"
@@ -39,18 +39,18 @@ snippets:
   session_hint:
     - bullets:
           items:
-            - "You can keep sending tickers without rerunning /price. Session ends after {ttl_min} minutes or when you switch commands."
-            - "Age shows how current the price is: L = Live, P = Prev close, E = End-of-day, D = Delayed, or a 3-letter code or n/a."
-            - "Requesting .US from Europe may only return live prices during US market hours. This is a limitation of the data provider."
+            - "Age: L (Live), P (Prev close), E (End-of-day), D (Delayed), MAR (Market Average Refresh)"
+            - "You can keep sending tickers without rerunning /price."
+
 
   fx_session_hint:
     - bullets:
           items:
-            - "You can keep sending currency pairs without rerunning /fx. Session ends after {ttl_min} minutes or when you switch commands."
+            - "You can keep sending currency pairs without rerunning /fx."
             - "Rates update live during trading hours."
 
   fx_pair_error:
-    - paragraph: "⚠️ Unfortunately, I couldn't find quotes for some of the currency pairs you requested. Please check the list below and update them, or send new ones without rerunning /fx."
+    - paragraph: "⚠️ Some currency pairs not found. Update or send new ones without rerunning /fx."
 
 screens:
   # /help - help landing
@@ -130,7 +130,7 @@ screens:
     blocks:
       - table:
           rows: "{table_rows}"
-      - paragraph: "⚠️ Unfortunately, I couldn't find any valid quotes for a few of the tickers you requested. This may happen if the tickers are incorrect or not supported."
+      - include: symbol_error
   
   # /price - no quotes and some tickers missing (minimal missing list)
   price_not_found:
@@ -161,8 +161,7 @@ screens:
   # FX-specific errors (e.g., unsupported pair or upstream failure)
   fx_error:
     blocks:
-      - paragraph: "⚠️ Unfortunately, I couldn't fetch a valid rate for {base} → {quote}."
-      - paragraph: "This may happen if the pair isn't supported or the market is unavailable."
+      - paragraph: "⚠️ No valid rate for {base} → {quote}. Pair may be unsupported or market unavailable."
       - spacer: { lines: 1 }
       - paragraph: "Try: USD EUR"
 
@@ -196,7 +195,6 @@ screens:
           items:
             - "Values are shown in EUR and may differ slightly from your broker."
             - "Quotes refresh live during trading hours."
-            - "Cash is included in the total value if available."    
 
   # /portfolio_snapshot – optional args prompt
   portfolio_snapshot_prompt:
@@ -260,6 +258,12 @@ screens:
             - "Overconcentration in a single asset or sector increases risk."
             - "Use /allocation_edit to update your targets anytime." 
 
+  # /allocation - result when no data is available
+  allocation_empty:
+    blocks:
+      - paragraph: "⚠️ I couldn't find allocation data to show right now."
+      - paragraph: "Send /allocation_edit to set targets or add holdings first."
+
   # /allocation_edit – missing args prompt
   allocation_edit_prompt:
     blocks:
@@ -302,6 +306,11 @@ screens:
     blocks:
       - paragraph: "✅ Renamed {symbol} to {nickname}"
 
+  # /rename - error when symbol not held
+  rename_error:
+    blocks:
+      - paragraph: "⚠️ Can't update the nickname because {symbol} isn't in your portfolio."
+
   # /tx – optional args prompt
   tx_prompt:
     blocks:
@@ -336,6 +345,7 @@ screens:
   cash_zero:
       blocks:
         - paragraph: "💸 Your cash balance is empty."
+        - spacer: { lines: 1 }
         - paragraph: "Use /cash_add to start tracking cash alongside your investments"
 
   # /cash_add – missing args prompt
@@ -352,6 +362,8 @@ screens:
   cash_add_success:
     blocks:
       - paragraph: "✅ Updated cash balance by {amount_display}"
+      - spacer: { lines: 1 }
+      - paragraph: "New balance: {new_balance}"
 
   cash_remove_prompt:
       blocks:
@@ -372,15 +384,36 @@ screens:
 
   cash_remove_success:
       blocks:
-        - paragraph: "✅ Removed {amount_display} from cash balance. New balance: {new_balance}"
+        - paragraph: "✅ Removed {amount_display} from cash balance."
+        - spacer: { lines: 1 }
+        - paragraph: "New balance: {new_balance}"
 
   cash_remove_cancelled:
       blocks:
         - paragraph: "Got it, no changes made. You still have {amount_display} in cash."
 
+  # /cash_remove - insufficient balance
+  cash_remove_insufficient:
+    blocks:
+      - paragraph: "⚠️ Can't remove {amount_display} because only {current_balance} is available."
+
+
   # ===================
   # TRADING COMMANDS
   # ===================
+
+  # /buy – insufficient cash error
+  buy_insufficient_cash:
+    blocks:
+      - paragraph: "⚠️ Not enough cash to buy."
+      - paragraph: "Current cash balance: {current_balance}"
+
+  # /sell – insufficient holdings error
+  sell_insufficient_holdings:
+    blocks:
+      - paragraph: "⚠️ Sell amount exceeds holdings."
+      - spacer: { lines: 1 }
+      - paragraph: "You can sell up to {available_qty} right now."
 
   # /buy – missing args prompt
   buy_prompt:
@@ -445,7 +478,7 @@ screens:
   # /remove – not owned
   remove_not_owned:
     blocks:
-      - paragraph: "You don't currently hold {symbol} in your portfolio."
+      - paragraph: "⚠️ You don't currently hold {symbol} in your portfolio."
 
   # /remove – confirmation prompt
   remove_confirm:
@@ -486,13 +519,11 @@ screens:
   invalid_template:
     blocks:
       - paragraph: "Hmm, that didn't look right. {error}"
-      - paragraph: "Try: {usage}"
       - paragraph: "Try: {example}"
 
   service_error:
     blocks:
       - paragraph: "{message}"
-      - paragraph: "Try: {usage}"
       - paragraph: "Try: {example}"
 
   # Shown when the sender is not in ROUTER_OWNER_IDS
@@ -510,4 +541,9 @@ screens:
   done:
     blocks:
       - paragraph: "✅ Done"
+
+
+
+
+
 

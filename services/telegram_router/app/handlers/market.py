@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any, Dict, List
 
 from ..core.registry import CommandSpec
-from ..core.templates import mdv2_blockquote, mdv2_expandable_blockquote
 from ..services import market_label, freshness_label
 from .base import BaseHandler
 
@@ -31,15 +30,7 @@ class MarketHandler(BaseHandler):
             if requested:
                 payload = {"ttl_min": ttl_min, "not_found_symbols": requested}
                 pages = self.render_response("price_not_found", payload)
-                if not pages:
-                    return []
-                note = (
-                    formatter.format_error_note("Tickers couldn't be found.")
-                    if formatter
-                    else mdv2_blockquote(["Tickers couldn't be found."])
-                )
-                first_page = f"{pages[0]}\n\n{note}"
-                return [first_page] + list(pages[1:])
+                return pages if pages else []
             return self.render_response("price_prompt", {"ttl_min": ttl_min})
 
         rows: List[List[str]] = [["TICKER", "NOW", "OPEN", "%", "MARKET", "FRESHNESS"]]
@@ -87,16 +78,7 @@ class MarketHandler(BaseHandler):
         pages = self.render_response(base_screen, screen_payload)
         if not pages:
             return []
-        text = pages[0]
-        interactive_hint_needed = (not clear_after) or has_missing or partial
-
-        if has_missing:
-            note = (
-                formatter.format_error_note("Tickers couldn't be found.")
-                if formatter
-                else mdv2_blockquote(["Tickers couldn't be found."])
-            )
-            text = f"{text}\n\n{note}"
+        result_pages = list(pages)
 
         if partial or has_missing:
             self.create_session(chat_id, spec, values={}, missing=[])
@@ -105,34 +87,7 @@ class MarketHandler(BaseHandler):
         else:
             self.clear_session(chat_id)
 
-        footnotes = ""
-        if not has_missing:
-            if resp.get("partial") or (isinstance(resp.get("error"), dict) and resp.get("error", {}).get("details")):
-                details = resp.get("error", {}).get("details", {}) if isinstance(resp.get("error"), dict) else {}
-                failed_symbols = details.get("symbols_failed") or effective_failed or []
-                message = "Tickers couldn't be found."
-                if failed_symbols:
-                    head = message
-                    body = [" ".join(str(sym) for sym in failed_symbols)] if isinstance(failed_symbols, list) else [str(failed_symbols)]
-                    footnotes = (
-                        formatter.format_error_details(head, body)
-                        if formatter
-                        else mdv2_expandable_blockquote([head], body)
-                    )
-                else:
-                    footnotes = (
-                        formatter.format_error_note(message)
-                        if formatter
-                        else mdv2_blockquote([message])
-                    )
-
-        if clear_after and footnotes:
-            text = f"{text}\n\n{footnotes}"
-
-        if interactive_hint_needed:
-            text = text.replace("Session ends after", "Session auto-closes after")
-
-        return [text]
+        return result_pages
 
     async def handle_fx(
         self,
@@ -210,3 +165,4 @@ class MarketHandler(BaseHandler):
             {"message": "Service error", "usage": usage, "example": example},
         )
         return fallback if fallback else ["Service error"]
+
